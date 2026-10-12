@@ -48,6 +48,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -n "$RELEASE_KEYSTORE_FILE" || { echo "Release keystore missing; refusing to publish a debug-signed APK"; exit 1; }
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; not replacing it"
+            exit 0
+          fi
           version="${GITHUB_REF_NAME#v}"
           cp app/build/outputs/apk/release/app-release.apk "QuickPDF-$version.apk"
           gh release create "$GITHUB_REF_NAME" "QuickPDF-$version.apk" --title "QuickPDF $version" --generate-notes
