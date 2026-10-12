@@ -44,10 +44,15 @@ class Library(private val context: Context) {
         return doc
     }
 
+    /** Changes often while reading, so it's only kept in memory until the next save or [flush]. */
     fun setLastPage(uri: Uri, page: Int) {
         val doc = get(uri) ?: return
-        if (doc.lastPage != page) update(doc.copy(lastPage = page))
+        if (doc.lastPage != page) {
+            _recents.value = _recents.value.map { if (it.uri == doc.uri) doc.copy(lastPage = page) else it }
+        }
     }
+
+    fun flush() = save()
 
     fun toggleBookmark(uri: Uri, page: Int) {
         val doc = get(uri) ?: return
