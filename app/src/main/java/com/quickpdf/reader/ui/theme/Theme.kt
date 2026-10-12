@@ -54,3 +54,14 @@ object HighlightColors {
     val match = Color(0x66FFD54F)
     val current = Color(0x99FF7043)
 }
+
+/** Colors users can give their highlights; an annotation stores the index. */
+object AnnotationColors {
+    val all = listOf(Color(0xFFFFD54F), Color(0xFF81C784), Color(0xFF64B5F6), Color(0xFFF06292))
+
+    operator fun get(index: Int): Color = all[index.coerceIn(0, all.lastIndex)]
+
+    /** Text selection on pages. */
+    val selection = Color(0x553D5AFE)
+    val handle = Color(0xFF3D5AFE)
+}

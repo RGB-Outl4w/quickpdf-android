@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.updateAndGet
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -16,30 +17,55 @@ data class RecentDoc(
     val lastPage: Int,
     val openedAt: Long,
     val bookmarks: Set<Int>,
+    /** File size in bytes, part of the search index key; -1 if unknown (documents opened before 1.1). */
+    val size: Long = -1,
 )
 
-/** Recently opened documents, reading positions, bookmarks and reader preferences. */
+/** How pages are colored: as is, or remapped to paper and ink colors (night inverts). */
+enum class PageTint { ORIGINAL, SEPIA, NIGHT, NIGHT_SEPIA }
+
+data class Settings(
+    val tint: PageTint = PageTint.ORIGINAL,
+    /** Swipe page by page instead of scrolling continuously. */
+    val paged: Boolean = false,
+    /** Continuous mode: scale each page to fit the screen instead of its width. */
+    val fitPage: Boolean = false,
+    /** Page-by-page mode: two pages side by side on wide screens. */
+    val spreads: Boolean = true,
+    val keepScreenOn: Boolean = false,
+    val checkUpdates: Boolean = true,
+)
+
+/** Recently opened documents, reading positions, bookmarks and settings. */
 class Library(private val context: Context) {
     private val prefs = context.getSharedPreferences("library", Context.MODE_PRIVATE)
 
     private val _recents = MutableStateFlow(load())
     val recents: StateFlow<List<RecentDoc>> = _recents.asStateFlow()
 
-    private val _nightPages = MutableStateFlow(prefs.getBoolean(KEY_NIGHT_PAGES, false))
-    val nightPages: StateFlow<Boolean> = _nightPages.asStateFlow()
+    private val _settings = MutableStateFlow(loadSettings())
+    val settings: StateFlow<Settings> = _settings.asStateFlow()
 
-    fun setNightPages(enabled: Boolean) {
-        _nightPages.value = enabled
-        prefs.edit().putBoolean(KEY_NIGHT_PAGES, enabled).apply()
+    fun updateSettings(change: (Settings) -> Settings) {
+        val s = _settings.updateAndGet(change)
+        prefs.edit()
+            .putString(KEY_TINT, s.tint.name)
+            .putBoolean(KEY_PAGED, s.paged)
+            .putBoolean(KEY_FIT_PAGE, s.fitPage)
+            .putBoolean(KEY_SPREADS, s.spreads)
+            .putBoolean(KEY_KEEP_ON, s.keepScreenOn)
+            .putBoolean(KEY_CHECK_UPDATES, s.checkUpdates)
+            .apply()
     }
 
     fun get(uri: Uri): RecentDoc? = _recents.value.firstOrNull { it.uri == uri.toString() }
 
     /** Registers [uri] as just opened, keeping its stored position and bookmarks. */
-    fun touch(uri: Uri, name: String, pageCount: Int): RecentDoc {
+    fun touch(uri: Uri, name: String, pageCount: Int, size: Long): RecentDoc {
         val existing = get(uri)
-        val doc = existing?.copy(name = name, pageCount = pageCount, openedAt = System.currentTimeMillis())
-            ?: RecentDoc(uri.toString(), name, pageCount, 0, System.currentTimeMillis(), emptySet())
+        val now = System.currentTimeMillis()
+        val doc = existing?.copy(name = name, pageCount = pageCount, openedAt = now, size = size)
+            ?: RecentDoc(uri.toString(), name, pageCount, 0, now, emptySet(), size)
         update(doc)
         return doc
     }
@@ -82,6 +108,7 @@ class Library(private val context: Context) {
                     .put("last", d.lastPage)
                     .put("at", d.openedAt)
                     .put("marks", JSONArray(d.bookmarks.sorted()))
+                    .put("size", d.size)
             )
         }
         prefs.edit().putString(KEY_RECENTS, arr.toString()).apply()
@@ -99,13 +126,34 @@ class Library(private val context: Context) {
                 lastPage = o.optInt("last"),
                 openedAt = o.optLong("at"),
                 bookmarks = if (marks == null) emptySet() else (0 until marks.length()).map { marks.getInt(it) }.toSet(),
+                size = o.optLong("size", -1),
             )
         }
     }.getOrDefault(emptyList())
 
+    private fun loadSettings(): Settings {
+        val d = Settings()
+        // 1.0 only had an on/off night mode.
+        val legacyTint = if (prefs.getBoolean(KEY_NIGHT_PAGES, false)) PageTint.NIGHT else d.tint
+        return Settings(
+            tint = prefs.getString(KEY_TINT, null)?.let { runCatching { PageTint.valueOf(it) }.getOrNull() } ?: legacyTint,
+            paged = prefs.getBoolean(KEY_PAGED, d.paged),
+            fitPage = prefs.getBoolean(KEY_FIT_PAGE, d.fitPage),
+            spreads = prefs.getBoolean(KEY_SPREADS, d.spreads),
+            keepScreenOn = prefs.getBoolean(KEY_KEEP_ON, d.keepScreenOn),
+            checkUpdates = prefs.getBoolean(KEY_CHECK_UPDATES, d.checkUpdates),
+        )
+    }
+
     companion object {
         private const val KEY_RECENTS = "recents"
         private const val KEY_NIGHT_PAGES = "night_pages"
+        private const val KEY_TINT = "tint"
+        private const val KEY_PAGED = "paged"
+        private const val KEY_FIT_PAGE = "fit_page"
+        private const val KEY_SPREADS = "spreads"
+        private const val KEY_KEEP_ON = "keep_screen_on"
+        private const val KEY_CHECK_UPDATES = "check_updates"
         private const val MAX_RECENTS = 50
 
         data class FileInfo(val name: String, val size: Long)

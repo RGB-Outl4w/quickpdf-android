@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Common -->
+    <string name="back">Назад</string>
+    <string name="cancel">Отмена</string>
+    <string name="close">Закрыть</string>
+    <string name="clear">Очистить</string>
+    <string name="more">Другие действия</string>
+    <string name="open">Открыть</string>
+    <string name="save">Сохранить</string>
+    <string name="delete">Удалить</string>
+    <string name="start">Начать</string>
+    <string name="go">Перейти</string>
+    <string name="later">Позже</string>
+    <string name="search">Поиск</string>
+    <string name="share">Поделиться</string>
+    <string name="copy">Копировать</string>
+    <string name="copied">Скопировано</string>
+    <string name="today">Сегодня</string>
+    <string name="yesterday">Вчера</string>
+    <string name="page_n">Страница %d</string>
+    <string name="page_short">с. %d</string>
+    <string name="page_of">Страница %1$d из %2$d</string>
+    <string name="page_of_percent">Страница %1$d из %2$d · %3$d%%</string>
+
+    <!-- Home -->
+    <string name="open_pdf">Открыть PDF</string>
+    <string name="search_all">Поиск по всем документам</string>
+    <string name="settings">Настройки</string>
+    <string name="filter_recent">Фильтр недавних файлов</string>
+    <string name="recent">Недавние</string>
+    <string name="continue_reading">Продолжить чтение</string>
+    <string name="continue_button">Продолжить</string>
+    <string name="remove_from_recent">Убрать из недавних</string>
+    <string name="empty_title">Откройте PDF, чтобы начать чтение</string>
+    <string name="tip_search">Мгновенный поиск по всему документу и переход между совпадениями</string>
+    <string name="tip_ocr">Отсканированная книга? Распознайте текст на устройстве, чтобы по ней можно было искать</string>
+    <string name="tip_navigation">Закладки, выделения, заметки и миниатюры страниц для быстрой навигации</string>
+    <plurals name="bookmarks">
+        <item quantity="one">%d закладка</item>
+        <item quantity="few">%d закладки</item>
+        <item quantity="many">%d закладок</item>
+        <item quantity="other">%d закладки</item>
+    </plurals>
+
+    <!-- Library search -->
+    <string name="search_all_hint">Поиск по недавним документам</string>
+    <string name="searching_docs">Поиск по документам: %1$d из %2$d…</string>
+    <string name="open_all_matches">Открыть документ на первом совпадении</string>
+    <plurals name="matches_in_docs">
+        <item quantity="one">%2$d документ · совпадений: %1$d</item>
+        <item quantity="few">%2$d документа · совпадений: %1$d</item>
+        <item quantity="many">%2$d документов · совпадений: %1$d</item>
+        <item quantity="other">%2$d документа · совпадений: %1$d</item>
+    </plurals>
+    <plurals name="not_indexed">
+        <item quantity="one">%d документ ещё не проиндексирован. Откройте его один раз, чтобы искать по нему.</item>
+        <item quantity="few">%d документа ещё не проиндексированы. Откройте их один раз, чтобы искать по ним.</item>
+        <item quantity="many">%d документов ещё не проиндексированы. Откройте их один раз, чтобы искать по ним.</item>
+        <item quantity="other">%d документа ещё не проиндексированы. Откройте их один раз, чтобы искать по ним.</item>
+    </plurals>
+
+    <!-- Reader -->
+    <string name="navigate">Содержание, закладки, заметки и страницы</string>
+    <string name="add_bookmark">Добавить закладку</string>
+    <string name="remove_bookmark">Удалить закладку</string>
+    <string name="go_to_page">Перейти к странице</string>
+    <string name="page_range">Страница (1–%d)</string>
+    <string name="reading_settings">Настройки чтения</string>
+    <string name="recognize_text_menu">Распознать текст (OCR)</string>
+    <string name="share_notes">Поделиться закладками и заметками</string>
+    <string name="error_password_protected">Этот PDF защищён паролем.</string>
+    <string name="error_no_permission">Нет доступа к файлу. Откройте его ещё раз из файлов.</string>
+    <string name="error_open_failed">Не удалось открыть этот PDF.\n%s</string>
+    <string name="password_title">Этот PDF защищён паролем</string>
+    <string name="password">Пароль</string>
+    <string name="wrong_password">Неверный пароль</string>
+
+    <!-- Search in document -->
+    <string name="close_search">Закрыть поиск</string>
+    <string name="search_in_document">Поиск в документе</string>
+    <string name="show_all_results">Показать все результаты</string>
+    <string name="previous">Предыдущее совпадение</string>
+    <string name="next">Следующее совпадение</string>
+    <string name="searching">Поиск…</string>
+    <string name="no_matches">Совпадений нет</string>
+    <string name="match_position">%1$d из %2$s · %3$s</string>
+    <string name="status_indexing">%1$s  (индексация %2$d/%3$d)</string>
+    <plurals name="pages">
+        <item quantity="one">%d страница</item>
+        <item quantity="few">%d страницы</item>
+        <item quantity="many">%d страниц</item>
+        <item quantity="other">%d страницы</item>
+    </plurals>
+
+    <!-- Selection, highlights, notes -->
+    <string name="clear_selection">Снять выделение</string>
+    <string name="highlight">Выделить цветом</string>
+    <string name="add_note">Добавить заметку</string>
+    <string name="highlight_title">Выделение · страница %d</string>
+    <string name="note">Заметка</string>
+    <string name="export_highlights">Выделения и заметки</string>
+    <string name="export_note">Заметка: %s</string>
+
+    <!-- Navigate sheet -->
+    <string name="tab_contents">Содержание</string>
+    <string name="tab_bookmarks">Закладки</string>
+    <string name="tab_notes">Заметки</string>
+    <string name="tab_pages">Страницы</string>
+    <string name="no_contents">В этом PDF нет содержания.\nИспользуйте страницы или поиск.</string>
+    <string name="no_bookmarks">Закладок пока нет.\nНажмите значок закладки вверху, чтобы сохранить страницу.</string>
+    <string name="no_notes">Выделений пока нет.\nНажмите и удерживайте текст на странице, чтобы выделить его цветом или добавить заметку.</string>
+
+    <!-- OCR -->
+    <string name="recognize">Распознать</string>
+    <string name="recognize_text">Распознать текст</string>
+    <string name="not_now">Не сейчас</string>
+    <string name="no_text_yet">Текста для поиска пока нет</string>
+    <string name="scanned_hint">Похоже, это отсканированный документ. Распознайте текст на устройстве, чтобы искать по нему.</string>
+    <string name="ocr_language_prompt">Язык отсканированных страниц:</string>
+    <string name="ocr_latin">Английский и другие языки на латинице</string>
+    <string name="ocr_latin_hint">Быстро</string>
+    <string name="ocr_russian">Русский (и английский)</string>
+    <string name="ocr_russian_hint">Медленнее; при первом запуске загружается 7,6 МБ моделей</string>
+    <string name="ocr_downloading">Загрузка моделей распознавания… %1$.1f / %2$.1f МБ</string>
+    <string name="ocr_progress">Распознавание текста… %1$d / %2$d</string>
+    <string name="ocr_nothing_to_do">На всех страницах уже есть текст для поиска</string>
+    <string name="ocr_failed_mlkit">Не удалось распознать текст (нужны сервисы Google Play): %s</string>
+    <string name="ocr_download_failed">Не удалось загрузить модели для русского текста: %s</string>
+    <string name="ocr_failed">Не удалось распознать текст: %s</string>
+    <plurals name="scanned_pages">
+        <item quantity="one">%d отсканированная страница без текста. Распознайте текст на устройстве, чтобы по ней можно было искать.</item>
+        <item quantity="few">%d отсканированные страницы без текста. Распознайте текст на устройстве, чтобы по ним можно было искать.</item>
+        <item quantity="many">%d отсканированных страниц без текста. Распознайте текст на устройстве, чтобы по ним можно было искать.</item>
+        <item quantity="other">%d отсканированной страницы без текста. Распознайте текст на устройстве, чтобы по ним можно было искать.</item>
+    </plurals>
+    <plurals name="ocr_done">
+        <item quantity="one">Текст распознан на %1$d из %2$d страницы</item>
+        <item quantity="few">Текст распознан на %1$d из %2$d страниц</item>
+        <item quantity="many">Текст распознан на %1$d из %2$d страниц</item>
+        <item quantity="other">Текст распознан на %1$d из %2$d страницы</item>
+    </plurals>
+
+    <!-- Settings -->
+    <string name="settings_layout">Режим просмотра</string>
+    <string name="layout_continuous">Непрерывная прокрутка</string>
+    <string name="layout_paged">Постранично</string>
+    <string name="two_pages">Две страницы рядом</string>
+    <string name="two_pages_hint">На широком экране, например на планшете в горизонтальной ориентации</string>
+    <string name="settings_fit">Размер страницы</string>
+    <string name="fit_width">По ширине</string>
+    <string name="fit_page">Страница целиком</string>
+    <string name="settings_page_color">Цвет страниц</string>
+    <string name="tint_original">Обычный</string>
+    <string name="tint_sepia">Сепия</string>
+    <string name="tint_night">Ночной</string>
+    <string name="tint_night_sepia">Ночная сепия</string>
+    <string name="keep_screen_on">Не выключать экран при чтении</string>
+    <string name="settings_language">Язык</string>
+    <string name="language_system">Как в системе</string>
+    <string name="settings_updates">Обновления</string>
+    <string name="check_updates">Проверять обновления автоматически</string>
+    <string name="check_updates_hint">Раз в день, на странице релизов GitHub</string>
+    <string name="check_now">Проверить сейчас</string>
+    <string name="settings_about">О приложении</string>
+    <string name="version">Версия</string>
+    <string name="source_code">Исходный код</string>
+    <string name="license">Лицензия</string>
+
+    <!-- Updates -->
+    <string name="update_available">Доступна версия QuickPDF %s</string>
+    <string name="update_available_short">Доступна версия %s</string>
+    <string name="update_up_to_date">У вас последняя версия</string>
+    <string name="update_check_failed">Не удалось проверить обновления. Проверьте подключение к интернету.</string>
+    <string name="update">Обновить</string>
+    <string name="update_title">Обновление до %s</string>
+    <string name="whats_new">Что нового</string>
+    <string name="update_keeps_data">Обновление устанавливается поверх текущей версии. Недавние файлы, закладки, выделения и заметки сохранятся.</string>
+    <string name="download_and_install">Загрузить и установить</string>
+    <string name="update_downloading">Загрузка… %1$.1f / %2$.1f МБ</string>
+    <string name="update_permission">Чтобы устанавливать обновления, разрешите QuickPDF устанавливать приложения: нажмите «Открыть настройки», включите «Разрешить установку из этого источника» и вернитесь сюда.</string>
+    <string name="open_settings">Открыть настройки</string>
+    <string name="update_installing">Завершите обновление в окне установщика. Если ничего не произошло, установите его со страницы релиза.</string>
+    <string name="update_failed">Не удалось установить обновление автоматически: %s</string>
+    <string name="update_manual">Чтобы обновить вручную: откройте страницу релиза, скачайте файл .apk в разделе Assets, откройте его и нажмите «Обновить». Документы и заметки сохранятся.</string>
+    <string name="open_release_page">Страница релиза</string>
+</resources>

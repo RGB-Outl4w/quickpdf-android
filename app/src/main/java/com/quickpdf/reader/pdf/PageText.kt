@@ -58,3 +58,44 @@ fun highlightRects(boxes: FloatArray, start: Int, end: Int): List<RectF> {
     cur?.let(out::add)
     return out
 }
+
+/**
+ * Index of the character whose box is nearest to page-relative ([x], [y]), preferring the line under the point;
+ * -1 if the page has no boxes.
+ */
+fun charIndexAt(boxes: FloatArray, x: Float, y: Float): Int {
+    var best = -1
+    var bestScore = Float.MAX_VALUE
+    for (i in 0 until boxes.size / 4) {
+        val l = boxes[i * 4]
+        if (l.isNaN()) continue
+        val t = boxes[i * 4 + 1]
+        val r = boxes[i * 4 + 2]
+        val b = boxes[i * 4 + 3]
+        val dx = if (x < l) l - x else if (x > r) x - r else 0f
+        val dy = if (y < t) t - y else if (y > b) y - b else 0f
+        val score = dy * 8 + dx
+        if (score < bestScore) {
+            bestScore = score
+            best = i
+        }
+    }
+    return best
+}
+
+/** The word around [index] as [start, end); a single character if it isn't part of a word. */
+fun wordRangeAt(text: String, index: Int): IntRange {
+    if (index !in text.indices) return IntRange.EMPTY
+    if (!text[index].isLetterOrDigit()) return index until index + 1
+    var s = index
+    var e = index + 1
+    while (s > 0 && text[s - 1].isLetterOrDigit()) s--
+    while (e < text.length && text[e].isLetterOrDigit()) e++
+    return s until e
+}
+
+/** Selected page text as one would paste it: hyphenated line breaks joined, other line breaks become spaces. */
+fun cleanSelection(text: String): String =
+    text.replace(Regex("(?<=\\p{L})[-\u00AD\u2010][ \\t]*\\n\\s*(?=\\p{L})"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()

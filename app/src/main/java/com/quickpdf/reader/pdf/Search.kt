@@ -45,14 +45,14 @@ object Search {
         return String(out)
     }
 
-    suspend fun run(pages: Array<PageText?>, regex: Regex): List<SearchHit> {
+    suspend fun run(pages: Array<PageText?>, regex: Regex, limit: Int = MAX_HITS): List<SearchHit> {
         val hits = ArrayList<SearchHit>()
         for ((index, page) in pages.withIndex()) {
             currentCoroutineContext().ensureActive()
             page ?: continue
             for (m in regex.findAll(page.folded)) {
                 hits += hit(index, page.text, m.range.first, m.range.last + 1)
-                if (hits.size >= MAX_HITS) return hits
+                if (hits.size >= limit) return hits
             }
         }
         return hits

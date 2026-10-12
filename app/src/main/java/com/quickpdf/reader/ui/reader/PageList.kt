@@ -1,11 +1,7 @@
 package com.quickpdf.reader.ui.reader
 
-import android.graphics.Bitmap
-import android.graphics.RectF
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -17,45 +13,46 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import com.quickpdf.reader.data.PageTint
 import com.quickpdf.reader.pdf.PdfPageRenderer
-import com.quickpdf.reader.pdf.SearchHit
-import com.quickpdf.reader.pdf.highlightRects
-import com.quickpdf.reader.ui.theme.HighlightColors
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+
+/** Content slot for one page: page index, bitmap width to render at, and the modifier that sizes it. */
+typealias PageContent = @Composable (page: Int, renderWidth: Int, modifier: Modifier) -> Unit
+
+/** Where the reader is and how to move it, independent of the page layout. */
+@Stable
+interface PageNavigator {
+    /** First page on screen (for spreads, the left page). */
+    val currentPage: Int
+    val isMoving: Boolean
+
+    /** Shows [page]; with a page-relative point ([fx], [fy]), puts it about a third down the screen. */
+    suspend fun goTo(page: Int, fx: Float? = null, fy: Float? = null)
+}
 
 /** Zoom/pan of the whole page column. Screen x = tx + scale * localX, screen y = scale * localY. */
 @Stable
@@ -104,34 +101,62 @@ class ZoomState {
 
 private val renderBuckets = floatArrayOf(1f, 1.5f, 2f, 3f)
 
-private val invertFilter = ColorFilter.colorMatrix(
-    ColorMatrix(
-        floatArrayOf(
-            -1f, 0f, 0f, 0f, 255f,
-            0f, -1f, 0f, 0f, 255f,
-            0f, 0f, -1f, 0f, 255f,
-            0f, 0f, 0f, 1f, 0f,
-        )
-    )
-)
+/** Render width for a page [widthPx] wide at [scale], rounded so the bitmap cache sees few distinct widths. */
+fun renderWidthFor(widthPx: Float, scale: Float): Int {
+    val bucket = renderBuckets.firstOrNull { it >= scale - 0.01f } ?: renderBuckets.last()
+    return ((widthPx * bucket / 64f).roundToInt() * 64).coerceAtLeast(64)
+}
 
+class ListNavigator(
+    private val listState: LazyListState,
+    private val zoom: ZoomState,
+    private val renderer: PdfPageRenderer,
+) : PageNavigator {
+    override val currentPage by derivedStateOf {
+        val info = listState.layoutInfo
+        val items = info.visibleItemsInfo
+        if (items.isEmpty()) listState.firstVisibleItemIndex
+        else {
+            val probe = info.viewportStartOffset + (info.viewportEndOffset - info.viewportStartOffset) / 3
+            (items.firstOrNull { it.offset <= probe && it.offset + it.size > probe } ?: items.first()).index
+        }
+    }
+
+    override val isMoving: Boolean get() = listState.isScrollInProgress
+
+    override suspend fun goTo(page: Int, fx: Float?, fy: Float?) {
+        val p = page.coerceIn(0, (renderer.pageCount - 1).coerceAtLeast(0))
+        listState.scrollToItem(p)
+        if (fy == null) return
+        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == p } ?: return
+        val visible = listState.layoutInfo.viewportSize.height
+        listState.scrollToItem(p, (fy * item.size - visible / 3f).roundToInt().coerceAtLeast(0))
+        if (fx != null && zoom.scale > 1.01f) {
+            val pageWidth = item.size / renderer.aspectRatios[p]
+            zoom.centerOn((zoom.viewportWidth - pageWidth) / 2 + fx * pageWidth)
+        }
+    }
+}
+
+/** Continuous vertical scrolling, pages fit to width or to the whole page, with pinch and double-tap zoom. */
 @Composable
 fun PageList(
     renderer: PdfPageRenderer,
     listState: LazyListState,
     zoom: ZoomState,
     contentPadding: PaddingValues,
-    night: Boolean,
-    search: SearchState,
-    charBoxes: suspend (Int) -> FloatArray?,
+    tint: PageTint,
+    fitPage: Boolean,
     onTap: () -> Unit,
+    pageContent: PageContent,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
     BoxWithConstraints(
         modifier
             .clipToBounds()
-            .background(if (night) Color(0xFF0B0B0D) else MaterialTheme.colorScheme.surfaceContainerHighest)
+            .background(tint.canvas())
             .pointerInput(Unit) {
                 // Pinch to zoom (two fingers) and horizontal pan when zoomed (one finger).
                 // Runs in the Initial pass so a pinch never reaches the list's own scrolling.
@@ -170,10 +195,10 @@ fun PageList(
                 )
             }
     ) {
-        val widthPx = constraints.maxWidth
-        zoom.viewportWidth = widthPx.toFloat()
-        val bucket = renderBuckets.firstOrNull { it >= zoom.settledScale - 0.01f } ?: renderBuckets.last()
-        val renderWidth = (widthPx * bucket).roundToInt()
+        val widthPx = constraints.maxWidth.toFloat()
+        // Fit page: leave a small margin so a whole page and a hint of the next one show.
+        val fitHeightPx = constraints.maxHeight * 0.94f
+        zoom.viewportWidth = widthPx
 
         LazyColumn(
             state = listState,
@@ -196,78 +221,11 @@ fun PageList(
             },
         ) {
             items(renderer.pageCount, key = { it }) { page ->
-                PageItem(
-                    page = page,
-                    renderer = renderer,
-                    renderWidth = renderWidth,
-                    night = night,
-                    hits = search.byPage[page],
-                    currentHit = search.currentHit,
-                    charBoxes = charBoxes,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PageItem(
-    page: Int,
-    renderer: PdfPageRenderer,
-    renderWidth: Int,
-    night: Boolean,
-    hits: List<SearchHit>?,
-    currentHit: SearchHit?,
-    charBoxes: suspend (Int) -> FloatArray?,
-) {
-    var bitmap by remember(page) { mutableStateOf<Bitmap?>(renderer.cached(page, renderWidth) ?: renderer.cachedAny(page)) }
-    LaunchedEffect(page, renderWidth) {
-        bitmap = runCatching { renderer.render(page, renderWidth) }.getOrNull() ?: bitmap
-    }
-
-    var highlights by remember(page) { mutableStateOf<List<Pair<SearchHit, List<RectF>>>>(emptyList()) }
-    LaunchedEffect(page, hits) {
-        highlights = if (hits.isNullOrEmpty()) emptyList() else {
-            val boxes = charBoxes(page)
-            if (boxes == null) emptyList() else hits.map { it to highlightRects(boxes, it.start, it.end) }
-        }
-    }
-
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f / renderer.aspectRatios[page])
-            .background(if (night) Color.Black else Color.White)
-    ) {
-        val bmp = bitmap
-        if (bmp != null) {
-            Image(
-                bitmap = bmp.asImageBitmap(),
-                contentDescription = "Page ${page + 1}",
-                contentScale = ContentScale.FillBounds,
-                colorFilter = if (night) invertFilter else null,
-                modifier = Modifier.matchParentSize(),
-            )
-        } else {
-            Text(
-                "${page + 1}",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.Gray.copy(alpha = 0.5f),
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-        if (highlights.isNotEmpty()) {
-            Canvas(Modifier.matchParentSize()) {
-                val pad = 1.5.dp.toPx()
-                for ((hit, rects) in highlights) {
-                    val isCurrent = hit === currentHit
-                    for (r in rects) {
-                        val topLeft = Offset(r.left * size.width - pad, r.top * size.height - pad)
-                        val sz = Size(r.width() * size.width + 2 * pad, r.height() * size.height + 2 * pad)
-                        val radius = CornerRadius(3.dp.toPx())
-                        drawRoundRect(if (isCurrent) HighlightColors.current else HighlightColors.match, topLeft, sz, radius)
-                        if (isCurrent) drawRoundRect(Color(0xFFE64A19), topLeft, sz, radius, style = Stroke(1.5.dp.toPx()))
-                    }
+                val ratio = renderer.aspectRatios[page]
+                val pageWidthPx = if (fitPage) minOf(widthPx, fitHeightPx / ratio) else widthPx
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                    val w = with(density) { pageWidthPx.toDp() }
+                    pageContent(page, renderWidthFor(pageWidthPx, zoom.settledScale), Modifier.size(w, w * ratio))
                 }
             }
         }
