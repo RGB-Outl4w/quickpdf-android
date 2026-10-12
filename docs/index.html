@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuickPDF – Fast PDF reader for Android</title>
+<meta name="description" content="A small, fast, open-source PDF reader for Android, built for studying. Full-text search, on-device OCR for scanned books, and quick navigation.">
+<meta property="og:title" content="QuickPDF">
+<meta property="og:description" content="A small, fast PDF reader for Android, built for studying.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#3D5AFE">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #f8f9fc;
+    --surface: #ffffff;
+    --surface-2: #eef0f7;
+    --text: #15171e;
+    --muted: #565a6b;
+    --line: #dfe2ec;
+    --primary: #3d5afe;
+    --primary-ink: #ffffff;
+    --primary-soft: #dde1ff;
+    --primary-soft-ink: #1b2a8c;
+    --hl: #ffe08a;
+    --hl-current: #ffb74d;
+    --page: #ffffff;
+    --page-line: #d9dce6;
+    --shadow: 0 1px 2px rgba(20, 24, 40, .06), 0 8px 24px rgba(20, 24, 40, .08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318;
+      --surface: #1a1c22;
+      --surface-2: #22252d;
+      --text: #e4e5ec;
+      --muted: #a3a6b5;
+      --line: #2e313b;
+      --primary: #b9c3ff;
+      --primary-ink: #00218b;
+      --primary-soft: #26338f;
+      --primary-soft-ink: #dde1ff;
+      --page: #f4f4f6;
+      --page-line: #cfd2dc;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  a { color: inherit; }
+  code {
+    font: .9em/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--surface-2);
+    padding: .15em .4em;
+    border-radius: 6px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding-inline: 24px; }
+
+  /* Header */
+  header { border-bottom: 1px solid var(--line); }
+  .nav { display: flex; align-items: center; gap: 24px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 18px; text-decoration: none; }
+  .brand img { width: 32px; height: 32px; }
+  .nav nav { margin-left: auto; display: flex; gap: 20px; font-size: 15px; }
+  .nav nav a { text-decoration: none; color: var(--muted); }
+  .nav nav a:hover { color: var(--text); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 20px; border-radius: 999px;
+    font-weight: 600; font-size: 15px; text-decoration: none;
+    border: 1px solid transparent;
+  }
+  .btn svg { width: 18px; height: 18px; }
+  .btn-primary { background: var(--primary); color: var(--primary-ink); }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-ghost { border-color: var(--line); background: var(--surface); }
+  .btn-ghost:hover { border-color: var(--muted); }
+  .btn:focus-visible, .nav a:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+
+  /* Hero */
+  .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 48px; align-items: center; padding-block: 72px 80px; }
+  .hero h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.1; letter-spacing: -.02em; margin: 0 0 20px; }
+  .hero p.lead { font-size: 19px; color: var(--muted); margin: 0 0 32px; max-width: 34em; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+  .meta { margin-top: 20px; font-size: 14px; color: var(--muted); }
+
+  /* Phone mockup */
+  .phone {
+    justify-self: center;
+    width: 300px; height: 610px;
+    border-radius: 40px; padding: 12px;
+    background: #1d1f26; box-shadow: var(--shadow), 0 30px 60px rgba(20, 24, 40, .18);
+  }
+  .screen {
+    position: relative; height: 100%; overflow: hidden;
+    border-radius: 30px; background: #e6e8f0;
+    font-family: Roboto, system-ui, sans-serif; color: #1b1c22;
+  }
+  .m-search { background: #f1f2f8; padding: 30px 12px 8px; box-shadow: 0 2px 6px rgba(0,0,0,.08); position: relative; z-index: 1; }
+  .m-field { display: flex; align-items: center; gap: 8px; font-size: 15px; padding: 6px 4px; }
+  .m-field svg { width: 18px; height: 18px; flex: none; }
+  .m-status { display: flex; justify-content: space-between; font-size: 12px; color: #555a6c; padding: 2px 4px 0 30px; }
+  .m-page { margin: 12px 14px; background: #fff; border-radius: 2px; padding: 22px 18px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .m-h { height: 10px; width: 55%; background: #3a3d4a; border-radius: 2px; margin-bottom: 16px; }
+  .m-l { height: 6px; background: #cfd2dc; border-radius: 2px; margin: 0 0 9px; display: flex; gap: 6px; }
+  .m-l span { display: block; height: 100%; border-radius: 2px; background: #cfd2dc; }
+  .m-l .hit { background: var(--hl); outline: 2px solid var(--hl); }
+  .m-l .cur { background: var(--hl-current); outline: 2px solid #e64a19; }
+  .m-scroll { position: absolute; right: 0; top: 46%; width: 18px; height: 34px; background: #e0e0f9; border-radius: 14px 0 0 14px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  .m-chip { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); background: rgba(46,48,56,.88); color: #f1f0f7; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 999px; }
+
+  /* Sections */
+  section { padding: 72px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 30px; letter-spacing: -.01em; line-height: 1.2; margin: 0 0 12px; }
+  .section-lead { color: var(--muted); font-size: 17px; margin: 0 0 40px; max-width: 40em; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+  .card h3 { font-size: 17px; margin: 14px 0 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary-soft-ink); }
+  .ico svg { width: 22px; height: 22px; }
+
+  .examples { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .example { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px 24px; }
+  .example .q { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .example .row { display: flex; align-items: center; gap: 12px; margin: 8px 0 6px; font-size: 20px; }
+  .example .row .arrow { color: var(--muted); }
+  .example mark { background: var(--hl); color: #1b1c22; padding: 0 4px; border-radius: 4px; white-space: pre; }
+  .example p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .download { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; }
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+  ol.steps li { counter-increment: s; position: relative; padding: 0 0 20px 48px; }
+  ol.steps li::before {
+    content: counter(s); position: absolute; left: 0; top: 0;
+    width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--primary-soft); color: var(--primary-soft-ink); font-weight: 700; font-size: 15px;
+  }
+  ol.steps strong { display: block; }
+  ol.steps span { color: var(--muted); font-size: 15px; }
+  dl.specs { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px 24px; }
+  dl.specs div { display: grid; grid-template-columns: 140px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  dl.specs div:last-child { border-bottom: 0; }
+  dl.specs dt { color: var(--muted); }
+  dl.specs dd { margin: 0; overflow-wrap: anywhere; }
+  .fp { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+  footer nav { display: flex; gap: 20px; }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; padding-block: 48px 56px; gap: 48px; }
+    .grid, .examples { grid-template-columns: 1fr 1fr; }
+    .download { grid-template-columns: 1fr; gap: 32px; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding-inline: 16px; }
+    .nav nav a.hide-sm { display: none; }
+    .grid, .examples { grid-template-columns: 1fr; }
+    section { padding: 56px 0; }
+    .phone { width: 260px; height: 530px; }
+    dl.specs div { grid-template-columns: 1fr; gap: 2px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="./"><img src="icon.svg" alt="">QuickPDF</a>
+    <nav aria-label="Main">
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#download">Download</a>
+      <a href="https://github.com/RGB-Outl4w/quickpdf-android">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>Find anything in your PDFs, in seconds.</h1>
+      <p class="lead">QuickPDF is a small, fast PDF reader for Android, built for studying. Open a textbook, a scanned book or your own notes and search the whole thing instantly.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/RGB-Outl4w/quickpdf-android/releases/latest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Download APK
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/RGB-Outl4w/quickpdf-android">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+          Source on GitHub
+        </a>
+      </div>
+      <p class="meta">Free and open source · Android 8.0+ · No ads, no tracking</p>
+    </div>
+
+    <div class="phone" role="img" aria-label="QuickPDF searching a document: 3 of 41 matches across 12 pages, highlighted on the page">
+      <div class="screen" aria-hidden="true">
+        <div class="m-search">
+          <div class="m-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#1b1c22" stroke-width="2" stroke-linecap="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+            photosynthesis
+          </div>
+          <div class="m-status"><span>3 of 41 · 12 pages</span><span>▲ ▼</span></div>
+        </div>
+        <div class="m-page">
+          <div class="m-h"></div>
+          <div class="m-l"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:38%"></span><span class="hit" style="width:30%"></span><span style="width:32%"></span></div>
+          <div class="m-l"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:86%"></span></div>
+          <div class="m-l" style="margin-top:16px"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:12%"></span><span class="cur" style="width:30%"></span><span style="width:58%"></span></div>
+          <div class="m-l"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:64%"></span></div>
+          <div class="m-l" style="margin-top:16px"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:55%"></span><span class="hit" style="width:30%"></span><span style="width:15%"></span></div>
+          <div class="m-l"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:72%"></span></div>
+          <div class="m-l" style="margin-top:16px"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:100%"></span></div>
+          <div class="m-l"><span style="width:90%"></span></div>
+        </div>
+        <div class="m-page" style="height:120px"></div>
+        <div class="m-scroll"></div>
+        <div class="m-chip">128 / 412</div>
+      </div>
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>Made for long documents</h2>
+      <p class="section-lead">Textbooks run to hundreds of pages. QuickPDF is built to get you to the right one quickly and stay out of the way while you read.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+          <h3>Instant full-text search</h3>
+          <p>Every page is indexed in the background and cached. Matches are highlighted on the page, with a results list and previous/next navigation.</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg></div>
+          <h3>Scanned books, searchable</h3>
+          <p>Pages without a text layer can be recognized on the device: ML Kit for Latin-script languages, Tesseract for Russian.</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M4 12h16M4 18h10"/><path d="m17 4 3 2-3 2"/></svg></div>
+          <h3>Fast navigation</h3>
+          <p>Drag the edge scroller through hundreds of pages, or jump by table of contents, bookmarks, page number or thumbnails.</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg></div>
+          <h3>Comfortable reading</h3>
+          <p>Continuous scrolling, pinch and double-tap zoom, a distraction-free full screen and a night mode for pages.</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+          <h3>Password-protected PDFs</h3>
+          <p>Encrypted documents open after you enter the password. Their text is never written to storage.</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v6c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <h3>Private by design</h3>
+          <p>No accounts, analytics or ads. Your documents never leave the device.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Search that forgives</h2>
+      <p class="section-lead">Real documents are messy. QuickPDF finds what you meant, not only what you typed.</p>
+      <div class="examples">
+        <div class="example">
+          <div class="q">Accents</div>
+          <div class="row"><code>cafe</code><span class="arrow">→</span><mark>Café</mark></div>
+          <p>Case and diacritics are ignored.</p>
+        </div>
+        <div class="example">
+          <div class="q">Cyrillic</div>
+          <div class="row"><code>елка</code><span class="arrow">→</span><mark>ёлка</mark></div>
+          <p>ё and е match; й stays a letter of its own.</p>
+        </div>
+        <div class="example">
+          <div class="q">Line breaks</div>
+          <div class="row"><code>information</code><span class="arrow">→</span><mark>infor-
+mation</mark></div>
+          <p>Words split by a hyphen at the end of a line are found.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap download">
+      <div>
+        <h2>Get QuickPDF</h2>
+        <p class="section-lead">QuickPDF is distributed as an APK on GitHub.</p>
+        <ol class="steps">
+          <li><strong>Download the APK</strong><span>Get <code>QuickPDF-&lt;version&gt;.apk</code> from the <a href="https://github.com/RGB-Outl4w/quickpdf-android/releases/latest">latest release</a>.</span></li>
+          <li><strong>Open it on your phone or tablet</strong><span>Allow installation from your browser or file manager when Android asks.</span></li>
+          <li><strong>Open a PDF</strong><span>From the app, or with <em>Open with</em> and <em>Share</em> from any other app.</span></li>
+        </ol>
+        <div class="cta" style="margin-top:12px">
+          <a class="btn btn-primary" href="https://github.com/RGB-Outl4w/quickpdf-android/releases/latest">Download latest release</a>
+        </div>
+      </div>
+      <dl class="specs">
+        <div><dt>Requires</dt><dd>Android 8.0 or newer, ARM device</dd></div>
+        <div><dt>Size</dt><dd>About 22 MB; Russian OCR models (7.6 MB) download on first use</dd></div>
+        <div><dt>Permissions</dt><dd>Internet, only for the OCR model download</dd></div>
+        <div><dt>License</dt><dd><a href="https://github.com/RGB-Outl4w/quickpdf-android/blob/HEAD/LICENSE">Apache 2.0</a></dd></div>
+        <div><dt>Signing certificate</dt><dd class="fp">SHA-256 4F:FD:E9:15:9D:AA:CC:0B:A2:18:11:D5:91:6E:61:0D:E4:35:57:EA:F7:84:D7:D4:ED:7D:21:9C:F0:60:45:3E</dd></div>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>QuickPDF · Apache License 2.0</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/RGB-Outl4w/quickpdf-android">Source</a>
+      <a href="https://github.com/RGB-Outl4w/quickpdf-android/releases">Releases</a>
+      <a href="https://github.com/RGB-Outl4w/quickpdf-android/issues">Report an issue</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>
