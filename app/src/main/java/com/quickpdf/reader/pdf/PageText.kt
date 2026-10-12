@@ -9,6 +9,9 @@ class WordBox(val start: Int, val end: Int, val left: Float, val top: Float, val
 class PageText(val text: String, val source: Int, val words: List<WordBox> = emptyList()) {
     val hasText: Boolean by lazy { text.count { !it.isWhitespace() } >= MIN_CHARS }
 
+    /** [text] as search matches it; same length, so offsets carry over. */
+    val folded: String by lazy { Search.fold(text) }
+
     /** Approximate per-character boxes (4 floats per char, NaN for characters without a box). */
     fun charBoxesFromWords(): FloatArray {
         val boxes = FloatArray(text.length * 4) { Float.NaN }

@@ -66,6 +66,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        (application as QuickPdfApp).library.flush()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         pdfUriFrom(intent)?.let { incoming = it }

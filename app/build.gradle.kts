@@ -60,4 +60,7 @@ dependencies {
     implementation(libs.pdfbox.android)
     implementation(libs.mlkit.text.recognition)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.tesseract4android)
+
+    testImplementation(libs.junit)
 }
