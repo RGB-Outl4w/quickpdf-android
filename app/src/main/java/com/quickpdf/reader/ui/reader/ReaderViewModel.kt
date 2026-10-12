@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.quickpdf.reader.QuickPdfApp
 import com.quickpdf.reader.data.Library
 import com.quickpdf.reader.pdf.IndexCache
+import com.quickpdf.reader.pdf.MlKitOcr
 import com.quickpdf.reader.pdf.Ocr
 import com.quickpdf.reader.pdf.OutlineItem
 import com.quickpdf.reader.pdf.PageText
@@ -19,8 +20,11 @@ import com.quickpdf.reader.pdf.PdfPageRenderer
 import com.quickpdf.reader.pdf.PdfTextSource
 import com.quickpdf.reader.pdf.Search
 import com.quickpdf.reader.pdf.SearchHit
+import com.quickpdf.reader.pdf.TessData
+import com.quickpdf.reader.pdf.TesseractOcr
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -41,6 +45,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 
 class IndexState(
     val pages: Array<PageText?>,
@@ -61,11 +66,13 @@ data class SearchState(
     val currentHit: SearchHit? get() = hits.getOrNull(current)
 }
 
-data class OcrProgress(val done: Int, val total: Int)
+/** Pages recognized, or kilobytes downloaded while [downloadingModels]. */
+data class OcrProgress(val done: Int, val total: Int, val downloadingModels: Boolean = false)
 
 sealed interface DocState {
     data object Loading : DocState
     data class Error(val message: String) : DocState
+    data class NeedsPassword(val wrong: Boolean) : DocState
     class Ready(val name: String, val renderer: PdfPageRenderer, val initialPage: Int) : DocState
 }
 
@@ -102,6 +109,7 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
     private var cache: IndexCache? = null
     private var pages: Array<PageText?> = emptyArray()
     private var ocrJob: Job? = null
+    private var password: String? = null
     private val boxCache = LruCache<Int, FloatArray>(32)
 
     var currentPage = 0
@@ -120,9 +128,10 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
             val info = withContext(Dispatchers.IO) { Library.queryFileInfo(ctx, uri) }
             val r = withContext(Dispatchers.IO) {
                 val pfd = openSeekable(ctx, info.size)
-                textSource = openTextSource(ctx, pfd)
                 try {
-                    PdfPageRenderer(pfd)
+                    val pdfBox = openPdfBox(ctx, pfd)
+                    textSource = pdfBox?.let(::PdfTextSource)
+                    openRenderer(ctx, pfd, pdfBox)
                 } catch (e: Throwable) {
                     runCatching { pfd.close() }
                     throw e
@@ -132,11 +141,15 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
             val recent = library.touch(uri, info.name, r.pageCount)
             currentPage = recent.lastPage.coerceIn(0, (r.pageCount - 1).coerceAtLeast(0))
             _doc.value = DocState.Ready(info.name, r, currentPage)
-            cache = IndexCache(ctx.filesDir, uri.toString(), info.size)
+            // Don't keep the text of password-protected documents on disk.
+            cache = if (password == null) IndexCache(ctx.filesDir, uri.toString(), info.size) else null
+            viewModelScope.launch { r.measurePages(fromPage = currentPage) }
             viewModelScope.launch { _outline.value = runCatching { textSource?.outline() }.getOrNull().orEmpty() }
             buildIndex(r.pageCount)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: InvalidPasswordException) {
+            _doc.value = DocState.NeedsPassword(wrong = password != null)
         } catch (e: SecurityException) {
             _doc.value = DocState.Error(
                 if (e.message?.contains("password", ignoreCase = true) == true) "This PDF is password-protected."
@@ -157,17 +170,45 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
         return ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
-    private fun openTextSource(ctx: Context, pfd: ParcelFileDescriptor): PdfTextSource? {
-        val doc = runCatching {
-            // Read the file directly through the descriptor: no copy, low memory.
-            pfd.dup().use { dup -> PDDocument.load(File("/proc/self/fd/${dup.fd}")) }
-        }.recoverCatching {
-            ctx.contentResolver.openInputStream(uri)!!.use {
-                PDDocument.load(it, MemoryUsageSetting.setupTempFileOnly())
-            }
-        }.getOrNull()
-        return doc?.let(::PdfTextSource)
+    fun submitPassword(value: String) {
+        password = value
+        _doc.value = DocState.Loading
+        viewModelScope.launch { open() }
     }
+
+    /**
+     * PdfBox document for text and the outline, or null if PdfBox can't read the file (pages still render).
+     * Throws [InvalidPasswordException] when the file needs a password, or a different one.
+     */
+    private fun openPdfBox(ctx: Context, pfd: ParcelFileDescriptor): PDDocument? {
+        val pw = password.orEmpty()
+        return runCatching {
+            // Read the file directly through the descriptor: no copy, low memory.
+            pfd.dup().use { dup -> PDDocument.load(File("/proc/self/fd/${dup.fd}"), pw) }
+        }.recoverCatching { e ->
+            if (e is InvalidPasswordException) throw e
+            ctx.contentResolver.openInputStream(uri)!!.use {
+                PDDocument.load(it, pw, MemoryUsageSetting.setupTempFileOnly())
+            }
+        }.onFailure { if (it is InvalidPasswordException) throw it }.getOrNull()
+    }
+
+    /** Before Android 15 PdfRenderer can't open encrypted files, so those render from a decrypted private copy. */
+    private fun openRenderer(ctx: Context, pfd: ParcelFileDescriptor, pdfBox: PDDocument?): PdfPageRenderer {
+        try {
+            return PdfPageRenderer(pfd, password)
+        } catch (e: SecurityException) {
+            if (pdfBox == null || !pdfBox.isEncrypted) throw e
+            val copy = decryptedCopy(ctx)
+            pdfBox.isAllSecurityToBeRemoved = true
+            pdfBox.save(copy)
+            pfd.close()
+            return PdfPageRenderer(ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY))
+        }
+    }
+
+    private fun decryptedCopy(ctx: Context) =
+        File(ctx.cacheDir, "opened").apply { mkdirs() }.resolve("${uri.toString().hashCode()}_decrypted.pdf")
 
     private suspend fun buildIndex(pageCount: Int) {
         val cached = withContext(Dispatchers.IO) { cache?.load(pageCount) }
@@ -269,7 +310,8 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
 
     // ---- OCR ----------------------------------------------------------------------------------
 
-    fun startOcr() {
+    /** [cyrillic] uses Tesseract (models downloaded on first use) instead of ML Kit's Latin recognizer. */
+    fun startOcr(cyrillic: Boolean) {
         if (ocrJob?.isActive == true) return
         val r = renderer ?: return
         val targets = pages.indices.filter { val p = pages[it]; p == null || (p.source != PageText.SOURCE_OCR && !p.hasText) }
@@ -278,15 +320,25 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
             return
         }
         ocrJob = viewModelScope.launch {
-            val ocr = Ocr()
+            var ocr: Ocr? = null
             var recognized = 0
             try {
+                val engine: Ocr = if (cyrillic) {
+                    val totalKb = (TessData.totalBytes / 1024).toInt()
+                    val path = TessData.ensure(getApplication<Application>()) { bytes ->
+                        _ocr.value = OcrProgress((bytes / 1024).toInt(), totalKb, downloadingModels = true)
+                    }
+                    withContext(Dispatchers.Default) { TesseractOcr(path) }
+                } else {
+                    MlKitOcr()
+                }
+                ocr = engine
                 _ocr.value = OcrProgress(0, targets.size)
                 var lastPublish = 0L
                 for ((k, page) in targets.withIndex()) {
                     val bmp = r.renderUncached(page, OCR_WIDTH)
                     val text = try {
-                        ocr.recognize(bmp)
+                        engine.recognize(bmp)
                     } finally {
                         bmp.recycle()
                     }
@@ -305,9 +357,16 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _messages.tryEmit("Text recognition failed (needs Google Play services): ${e.message ?: e.javaClass.simpleName}")
+                val reason = e.message ?: e.javaClass.simpleName
+                _messages.tryEmit(
+                    when {
+                        !cyrillic -> "Text recognition failed (needs Google Play services): $reason"
+                        e is IOException -> "Couldn't download the Russian text models: $reason"
+                        else -> "Text recognition failed: $reason"
+                    }
+                )
             } finally {
-                ocr.close()
+                ocr?.close()
                 _ocr.value = null
                 publish(pages.size, done = true)
                 saveIndex()
@@ -335,6 +394,8 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
     override fun onCleared() {
         renderer?.close()
         textSource?.close()
+        library.flush()
+        decryptedCopy(getApplication<Application>()).delete()
     }
 
     companion object {

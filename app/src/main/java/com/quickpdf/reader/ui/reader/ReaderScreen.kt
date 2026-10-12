@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tag
@@ -56,6 +58,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -80,6 +83,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -94,6 +98,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 fun ReaderScreen(uri: Uri, onBack: () -> Unit) {
@@ -105,6 +110,7 @@ fun ReaderScreen(uri: Uri, onBack: () -> Unit) {
     when (val d = doc) {
         DocState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         is DocState.Error -> ErrorView(d.message, onBack)
+        is DocState.NeedsPassword -> PasswordView(d.wrong, vm::submitPassword, onBack)
         is DocState.Ready -> Reader(vm, d, onBack)
     }
 }
@@ -132,6 +138,7 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, onBack: () -> Unit)
     var showNavigate by rememberSaveable { mutableStateOf(false) }
     var showGoTo by rememberSaveable { mutableStateOf(false) }
     var ocrBannerDismissed by rememberSaveable { mutableStateOf(false) }
+    var showOcrLanguage by rememberSaveable { mutableStateOf(false) }
     var scrubbing by remember { mutableStateOf(false) }
 
     val currentPage by remember {
@@ -199,7 +206,7 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, onBack: () -> Unit)
                     onPrev = { jumpToHit(vm.prevHit()) },
                     onNext = { jumpToHit(vm.nextHit()) },
                     onSelect = { i -> showResults = false; jumpToHit(vm.selectHit(i)) },
-                    onRecognize = if (ocr == null) ({ vm.startOcr() }) else null,
+                    onRecognize = if (ocr == null) ({ showOcrLanguage = true }) else null,
                 )
             } else {
                 AnimatedVisibility(
@@ -220,7 +227,7 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, onBack: () -> Unit)
                             onBookmark = { vm.toggleBookmark(currentPage) },
                             onGoTo = { showGoTo = true },
                             onNight = { vm.setNightPages(!night) },
-                            onOcr = { vm.startOcr() },
+                            onOcr = { showOcrLanguage = true },
                         )
                         if (!index.done && index.total > 0) {
                             LinearProgressIndicator(
@@ -241,7 +248,7 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, onBack: () -> Unit)
             ) {
                 ScannedBanner(
                     pages = index.scannedPages,
-                    onRecognize = { vm.startOcr() },
+                    onRecognize = { showOcrLanguage = true },
                     onDismiss = { ocrBannerDismissed = true },
                 )
             }
@@ -297,6 +304,13 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, onBack: () -> Unit)
             pageLabel = { p -> vm.pageText(p)?.text?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim().orEmpty() },
             onJump = { p -> showNavigate = false; jumpToPage(p) },
             onDismiss = { showNavigate = false },
+        )
+    }
+
+    if (showOcrLanguage) {
+        OcrLanguageDialog(
+            onStart = { cyrillic -> showOcrLanguage = false; vm.startOcr(cyrillic) },
+            onDismiss = { showOcrLanguage = false },
         )
     }
 
@@ -407,7 +421,11 @@ private fun OcrProgressBanner(progress: OcrProgress, onCancel: () -> Unit) {
         Column(Modifier.padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Recognizing text… ${progress.done} / ${progress.total}",
+                    if (progress.downloadingModels) {
+                        "Downloading text models… %.1f / %.1f MB".format(progress.done / 1024f, progress.total / 1024f)
+                    } else {
+                        "Recognizing text… ${progress.done} / ${progress.total}"
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.weight(1f),
                 )
@@ -417,6 +435,72 @@ private fun OcrProgressBanner(progress: OcrProgress, onCancel: () -> Unit) {
                 progress = { progress.done.toFloat() / progress.total.coerceAtLeast(1) },
                 modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
             )
+        }
+    }
+}
+
+private val cyrillicLocales = setOf("ru", "uk", "be", "bg", "sr", "mk", "kk", "ky", "tg", "mn")
+
+@Composable
+private fun OcrLanguageDialog(onStart: (cyrillic: Boolean) -> Unit, onDismiss: () -> Unit) {
+    var cyrillic by rememberSaveable { mutableStateOf(Locale.getDefault().language in cyrillicLocales) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Recognize text") },
+        text = {
+            Column {
+                Text("Language of the scanned pages:", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                for ((value, label, hint) in listOf(
+                    Triple(false, "English and other Latin-script languages", "Fast"),
+                    Triple(true, "Russian (with English)", "Slower; downloads 7.6 MB of models the first time"),
+                )) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().selectable(selected = cyrillic == value, onClick = { cyrillic = value }),
+                    ) {
+                        RadioButton(selected = cyrillic == value, onClick = null)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.padding(vertical = 8.dp)) {
+                            Text(label, style = MaterialTheme.typography.bodyLarge)
+                            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onStart(cyrillic) }) { Text("Start") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun PasswordView(wrong: Boolean, onSubmit: (String) -> Unit, onBack: () -> Unit) {
+    var text by rememberSaveable { mutableStateOf("") }
+    Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(Icons.Outlined.Lock, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(16.dp))
+        Text("This PDF is password-protected", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            label = { Text("Password") },
+            singleLine = true,
+            isError = wrong,
+            supportingText = if (wrong) ({ Text("Wrong password") }) else null,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { if (text.isNotEmpty()) onSubmit(text) }),
+        )
+        Spacer(Modifier.height(24.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = onBack) { Text("Back") }
+            Button(onClick = { onSubmit(text) }, enabled = text.isNotEmpty()) { Text("Open") }
         }
     }
 }
