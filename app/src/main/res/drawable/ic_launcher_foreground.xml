@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A document sheet with a magnifier: "read and find". 108dp adaptive canvas, art inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- page -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M36,28h26l12,12v36a4,4 0,0 1,-4 4H36a4,4 0,0 1,-4 -4V32a4,4 0,0 1,4 -4z" />
+    <!-- folded corner -->
+    <path
+        android:fillColor="#FFC5CAE9"
+        android:pathData="M62,28v8a4,4 0,0 0,4 4h8z" />
+    <!-- text lines -->
+    <path
+        android:fillColor="#FF9FA8DA"
+        android:pathData="M39,46h22v3H39zM39,53h18v3H39zM39,60h12v3H39z" />
+    <!-- magnifier -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF1A237E"
+        android:strokeWidth="4"
+        android:pathData="M64,64m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF1A237E"
+        android:strokeLineCap="round"
+        android:strokeWidth="5"
+        android:pathData="M70,70L76,76" />
+</vector>
