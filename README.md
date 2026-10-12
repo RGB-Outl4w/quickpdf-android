@@ -15,7 +15,7 @@ A small, fast Android PDF reader for studying: open a textbook, scanned book or 
 
 Kotlin and Jetpack Compose (Material 3, dynamic color). Pages are rendered with the platform `PdfRenderer`, so there's no native PDF engine to bundle. Text extraction and the table of contents use [PdfBox-Android](https://github.com/TomRoush/PdfBox-Android). OCR uses ML Kit text recognition through Google Play services, so the model isn't bundled in the APK. Cyrillic OCR uses [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android) with the `rus+eng` models from [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast), downloaded from a pinned commit and checked against their SHA-1. That download is the only thing the app uses the network for.
 
-Requires Android 8.0 (API 26) or newer.
+Requires Android 8.0 (API 26) or newer on an ARM device (`arm64-v8a` or `armeabi-v7a`); x86 emulators are not supported.
 
 ## Build
 
