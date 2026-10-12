@@ -1,10 +1,12 @@
 package com.quickpdf.reader
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -18,49 +20,87 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import com.quickpdf.reader.data.AppLanguage
 import com.quickpdf.reader.ui.home.HomeScreen
 import com.quickpdf.reader.ui.reader.ReaderScreen
+import com.quickpdf.reader.ui.search.LibrarySearchScreen
+import com.quickpdf.reader.ui.settings.SettingsScreen
 import com.quickpdf.reader.ui.theme.QuickPdfTheme
+import kotlinx.coroutines.launch
+
+private enum class Screen { HOME, SEARCH, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     private var incoming by mutableStateOf<Uri?>(null)
     private val readerStore: ReaderStoreHolder by viewModels()
 
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) incoming = pdfUriFrom(intent)
-        val library = (application as QuickPdfApp).library
+        val app = application as QuickPdfApp
+        val library = app.library
+        if (savedInstanceState == null && library.settings.value.checkUpdates) {
+            lifecycleScope.launch { app.updates.check(force = false) }
+        }
         setContent {
             QuickPdfTheme {
+                var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
                 var openUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+                // Set when a document is opened from library search.
+                var openPage by rememberSaveable { mutableStateOf<Int?>(null) }
+                var openQuery by rememberSaveable { mutableStateOf<String?>(null) }
+
+                fun open(uri: Uri, page: Int? = null, query: String? = null) {
+                    keepAccess(uri)
+                    openPage = page
+                    openQuery = query
+                    openUri = uri
+                }
+
                 LaunchedEffect(incoming) {
                     incoming?.let {
-                        keepAccess(it)
-                        openUri = it
+                        open(it)
                         incoming = null
                     }
                 }
                 val uri = openUri
-                if (uri == null) {
-                    HomeScreen(
-                        library = library,
-                        onOpen = { picked ->
-                            keepAccess(picked)
-                            openUri = picked
-                        },
-                    )
-                } else {
-                    ReaderScope(readerStore.ownerFor(uri)) {
+                when {
+                    uri != null -> ReaderScope(readerStore.ownerFor(uri)) {
                         ReaderScreen(
                             uri = uri,
+                            startPage = openPage,
+                            initialQuery = openQuery,
                             onBack = {
                                 openUri = null
                                 readerStore.release()
                             },
                         )
                     }
+                    screen == Screen.SEARCH -> {
+                        BackHandler { screen = Screen.HOME }
+                        LibrarySearchScreen(
+                            onOpen = { u, page, query -> open(u, page, query) },
+                            onBack = { screen = Screen.HOME },
+                        )
+                    }
+                    screen == Screen.SETTINGS -> {
+                        BackHandler { screen = Screen.HOME }
+                        SettingsScreen(library, app.updates, onBack = { screen = Screen.HOME })
+                    }
+                    else -> HomeScreen(
+                        library = library,
+                        updates = app.updates,
+                        onOpen = { open(it) },
+                        onSearchAll = { screen = Screen.SEARCH },
+                        onSettings = { screen = Screen.SETTINGS },
+                    )
                 }
             }
         }

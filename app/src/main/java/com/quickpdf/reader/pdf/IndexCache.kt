@@ -9,7 +9,7 @@ import java.security.MessageDigest
 
 /** Persists extracted / recognized text so a document is only indexed once. */
 class IndexCache(dir: File, uri: String, size: Long) {
-    private val file: File = File(dir, "index").apply { mkdirs() }.resolve(sha1("$uri|$size") + ".bin")
+    private val file: File = File(dir, "index").apply { mkdirs() }.resolve(sha1Hex("$uri|$size") + ".bin")
 
     fun load(pageCount: Int): Array<PageText?>? = runCatching {
         if (!file.exists()) return null
@@ -59,8 +59,8 @@ class IndexCache(dir: File, uri: String, size: Long) {
 
     private companion object {
         const val VERSION = 1
-
-        fun sha1(s: String): String =
-            MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 }
+
+fun sha1Hex(s: String): String =
+    MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }

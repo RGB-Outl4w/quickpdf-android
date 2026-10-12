@@ -4,12 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>QuickPDF – Fast PDF reader for Android</title>
-<meta name="description" content="A small, fast, open-source PDF reader for Android, built for studying. Full-text search, on-device OCR for scanned books, and quick navigation.">
+<meta name="description" content="A small, fast, open-source PDF reader for Android, built for studying. Full-text search, highlights and notes, on-device OCR for scanned books, and quick navigation.">
 <meta property="og:title" content="QuickPDF">
 <meta property="og:description" content="A small, fast PDF reader for Android, built for studying.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#3D5AFE">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<script>
+  // Apply the saved theme and language before first paint.
+  try {
+    var t = localStorage.getItem("theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    var l = localStorage.getItem("lang") || ((navigator.language || "").toLowerCase().indexOf("ru") === 0 ? "ru" : "en");
+    document.documentElement.lang = l;
+  } catch (e) {}
+</script>
 <style>
   :root {
     --bg: #f8f9fc;
@@ -24,12 +33,12 @@
     --primary-soft-ink: #1b2a8c;
     --hl: #ffe08a;
     --hl-current: #ffb74d;
-    --page: #ffffff;
-    --page-line: #d9dce6;
+    --note: #a5d6a7;
     --shadow: 0 1px 2px rgba(20, 24, 40, .06), 0 8px 24px rgba(20, 24, 40, .08);
+    color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --bg: #111318;
       --surface: #1a1c22;
       --surface-2: #22252d;
@@ -40,10 +49,23 @@
       --primary-ink: #00218b;
       --primary-soft: #26338f;
       --primary-soft-ink: #dde1ff;
-      --page: #f4f4f6;
-      --page-line: #cfd2dc;
       --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .35);
+      color-scheme: dark;
     }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111318;
+    --surface: #1a1c22;
+    --surface-2: #22252d;
+    --text: #e4e5ec;
+    --muted: #a3a6b5;
+    --line: #2e313b;
+    --primary: #b9c3ff;
+    --primary-ink: #00218b;
+    --primary-soft: #26338f;
+    --primary-soft-ink: #dde1ff;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .35);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -67,9 +89,28 @@
   .nav { display: flex; align-items: center; gap: 24px; height: 64px; }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 18px; text-decoration: none; }
   .brand img { width: 32px; height: 32px; }
-  .nav nav { margin-left: auto; display: flex; gap: 20px; font-size: 15px; }
+  .nav nav { margin-left: auto; display: flex; align-items: center; gap: 20px; font-size: 15px; }
   .nav nav a { text-decoration: none; color: var(--muted); }
   .nav nav a:hover { color: var(--text); }
+  .toggles { display: flex; gap: 6px; }
+  .toggle {
+    height: 36px; min-width: 36px; padding: 0 10px;
+    display: inline-grid; place-items: center;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: var(--surface); color: var(--text);
+    font: 600 13px/1 inherit; letter-spacing: .04em; cursor: pointer;
+  }
+  .toggle:hover { border-color: var(--muted); }
+  .toggle svg { width: 18px; height: 18px; }
+  /* The icon shows what a click switches to: a moon in light mode, a sun in dark mode. */
+  .toggle .sun { display: none; }
+  .toggle .moon { display: block; }
+  :root[data-theme="dark"] .toggle .sun { display: block; }
+  :root[data-theme="dark"] .toggle .moon { display: none; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .toggle .sun { display: block; }
+    :root:not([data-theme="light"]) .toggle .moon { display: none; }
+  }
 
   /* Buttons */
   .btn {
@@ -83,7 +124,7 @@
   .btn-primary:hover { filter: brightness(1.08); }
   .btn-ghost { border-color: var(--line); background: var(--surface); }
   .btn-ghost:hover { border-color: var(--muted); }
-  .btn:focus-visible, .nav a:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+  .btn:focus-visible, .nav a:focus-visible, .toggle:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 
   /* Hero */
   .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 48px; align-items: center; padding-block: 72px 80px; }
@@ -114,6 +155,7 @@
   .m-l span { display: block; height: 100%; border-radius: 2px; background: #cfd2dc; }
   .m-l .hit { background: var(--hl); outline: 2px solid var(--hl); }
   .m-l .cur { background: var(--hl-current); outline: 2px solid #e64a19; }
+  .m-l .note { background: var(--note); outline: 2px solid var(--note); }
   .m-scroll { position: absolute; right: 0; top: 46%; width: 18px; height: 34px; background: #e0e0f9; border-radius: 14px 0 0 14px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
   .m-chip { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); background: rgba(46,48,56,.88); color: #f1f0f7; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 999px; }
 
@@ -166,6 +208,8 @@
   }
   @media (max-width: 560px) {
     .wrap { padding-inline: 16px; }
+    .nav { gap: 12px; }
+    .nav nav { gap: 12px; }
     .nav nav a.hide-sm { display: none; }
     .grid, .examples { grid-template-columns: 1fr; }
     section { padding: 56px 0; }
@@ -180,9 +224,16 @@
   <div class="wrap nav">
     <a class="brand" href="./"><img src="icon.svg" alt="">QuickPDF</a>
     <nav aria-label="Main">
-      <a class="hide-sm" href="#features">Features</a>
-      <a class="hide-sm" href="#download">Download</a>
+      <a class="hide-sm" href="#features" data-i18n="nav_features">Features</a>
+      <a class="hide-sm" href="#download" data-i18n="nav_download">Download</a>
       <a href="https://github.com/RGB-Outl4w/quickpdf-android">GitHub</a>
+      <span class="toggles">
+        <button class="toggle" id="lang" type="button" aria-label="Русский">RU</button>
+        <button class="toggle" id="theme" type="button" aria-label="Switch to dark theme">
+          <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+      </span>
     </nav>
   </div>
 </header>
@@ -190,19 +241,19 @@
 <main>
   <div class="wrap hero">
     <div>
-      <h1>Find anything in your PDFs, in seconds.</h1>
-      <p class="lead">QuickPDF is a small, fast PDF reader for Android, built for studying. Open a textbook, a scanned book or your own notes and search the whole thing instantly.</p>
+      <h1 data-i18n="hero_title">Find anything in your PDFs, in seconds.</h1>
+      <p class="lead" data-i18n="hero_lead">QuickPDF is a small, fast PDF reader for Android, built for studying. Open a textbook, a scanned book or your own notes, search the whole thing instantly, and highlight what matters.</p>
       <div class="cta">
         <a class="btn btn-primary" href="https://github.com/RGB-Outl4w/quickpdf-android/releases/latest">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download APK
+          <span data-i18n="download_apk">Download APK</span>
         </a>
         <a class="btn btn-ghost" href="https://github.com/RGB-Outl4w/quickpdf-android">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
-          Source on GitHub
+          <span data-i18n="source">Source on GitHub</span>
         </a>
       </div>
-      <p class="meta">Free and open source · Android 8.0+ · No ads, no tracking</p>
+      <p class="meta" data-i18n="meta">Free and open source · Android 8.0+ · English and Russian · No ads, no tracking</p>
     </div>
 
     <div class="phone" role="img" aria-label="QuickPDF searching a document: 3 of 41 matches across 12 pages, highlighted on the page">
@@ -212,7 +263,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="#1b1c22" stroke-width="2" stroke-linecap="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
             photosynthesis
           </div>
-          <div class="m-status"><span>3 of 41 · 12 pages</span><span>▲ ▼</span></div>
+          <div class="m-status"><span>3 / 41 · 12</span><span>▲ ▼</span></div>
         </div>
         <div class="m-page">
           <div class="m-h"></div>
@@ -223,8 +274,8 @@
           <div class="m-l" style="margin-top:16px"><span style="width:100%"></span></div>
           <div class="m-l"><span style="width:12%"></span><span class="cur" style="width:30%"></span><span style="width:58%"></span></div>
           <div class="m-l"><span style="width:100%"></span></div>
-          <div class="m-l"><span style="width:100%"></span></div>
-          <div class="m-l"><span style="width:64%"></span></div>
+          <div class="m-l"><span style="width:20%"></span><span class="note" style="width:80%"></span></div>
+          <div class="m-l"><span class="note" style="width:64%"></span></div>
           <div class="m-l" style="margin-top:16px"><span style="width:100%"></span></div>
           <div class="m-l"><span style="width:100%"></span></div>
           <div class="m-l"><span style="width:55%"></span><span class="hit" style="width:30%"></span><span style="width:15%"></span></div>
@@ -244,38 +295,53 @@
 
   <section id="features">
     <div class="wrap">
-      <h2>Made for long documents</h2>
-      <p class="section-lead">Textbooks run to hundreds of pages. QuickPDF is built to get you to the right one quickly and stay out of the way while you read.</p>
+      <h2 data-i18n="features_title">Made for long documents</h2>
+      <p class="section-lead" data-i18n="features_lead">Textbooks run to hundreds of pages. QuickPDF is built to get you to the right one quickly and stay out of the way while you read.</p>
       <div class="grid">
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
-          <h3>Instant full-text search</h3>
-          <p>Every page is indexed in the background and cached. Matches are highlighted on the page, with a results list and previous/next navigation.</p>
+          <h3 data-i18n="f1_t">Instant full-text search</h3>
+          <p data-i18n="f1_d">Every page is indexed in the background and cached. Matches are highlighted on the page, with a results list and previous/next navigation.</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h6l2 2h8v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><circle cx="13" cy="13" r="3"/><path d="m17.5 17.5-2.4-2.4"/></svg></div>
+          <h3 data-i18n="f2_t">Search your whole library</h3>
+          <p data-i18n="f2_d">Look a term up across every recent document at once and jump straight to the page where it appears.</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg></div>
+          <h3 data-i18n="f3_t">Highlights and notes</h3>
+          <p data-i18n="f3_d">Long-press text to select it, then copy, highlight in four colors or add a note. Share bookmarks and notes as text.</p>
         </div>
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg></div>
-          <h3>Scanned books, searchable</h3>
-          <p>Pages without a text layer can be recognized on the device: ML Kit for Latin-script languages, Tesseract for Russian.</p>
+          <h3 data-i18n="f4_t">Scanned books, searchable</h3>
+          <p data-i18n="f4_d">Pages without a text layer can be recognized on the device: ML Kit for Latin-script languages, Tesseract for Russian.</p>
         </div>
         <div class="card">
-          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M4 12h16M4 18h10"/><path d="m17 4 3 2-3 2"/></svg></div>
-          <h3>Fast navigation</h3>
-          <p>Drag the edge scroller through hundreds of pages, or jump by table of contents, bookmarks, page number or thumbnails.</p>
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="9" height="14" rx="1"/><rect x="13" y="5" width="9" height="14" rx="1"/></svg></div>
+          <h3 data-i18n="f5_t">Scroll or turn pages</h3>
+          <p data-i18n="f5_d">Continuous scrolling fit to width or to the whole page, or page by page with two pages side by side on tablets.</p>
         </div>
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg></div>
-          <h3>Comfortable reading</h3>
-          <p>Continuous scrolling, pinch and double-tap zoom, a distraction-free full screen and a night mode for pages.</p>
+          <h3 data-i18n="f6_t">Easy on the eyes</h3>
+          <p data-i18n="f6_d">Sepia, night and night sepia page colors, pinch and double-tap zoom, a distraction-free full screen, and an option to keep the screen on.</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M4 12h16M4 18h10"/><path d="m17 4 3 2-3 2"/></svg></div>
+          <h3 data-i18n="f7_t">Fast navigation</h3>
+          <p data-i18n="f7_d">Drag the edge scroller through hundreds of pages, or jump by table of contents, bookmarks, notes, page number or thumbnails.</p>
         </div>
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
-          <h3>Password-protected PDFs</h3>
-          <p>Encrypted documents open after you enter the password. Their text is never written to storage.</p>
+          <h3 data-i18n="f8_t">Password-protected PDFs</h3>
+          <p data-i18n="f8_d">Encrypted documents open after you enter the password. Their text is never written to storage.</p>
         </div>
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v6c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
-          <h3>Private by design</h3>
-          <p>No accounts, analytics or ads. Your documents never leave the device.</p>
+          <h3 data-i18n="f9_t">Private, and up to date</h3>
+          <p data-i18n="f9_d">No accounts, analytics or ads, and documents never leave the device. The app tells you when a new version is out and installs it for you.</p>
         </div>
       </div>
     </div>
@@ -283,24 +349,24 @@
 
   <section>
     <div class="wrap">
-      <h2>Search that forgives</h2>
-      <p class="section-lead">Real documents are messy. QuickPDF finds what you meant, not only what you typed.</p>
+      <h2 data-i18n="forgive_title">Search that forgives</h2>
+      <p class="section-lead" data-i18n="forgive_lead">Real documents are messy. QuickPDF finds what you meant, not only what you typed.</p>
       <div class="examples">
         <div class="example">
-          <div class="q">Accents</div>
+          <div class="q" data-i18n="ex1_q">Accents</div>
           <div class="row"><code>cafe</code><span class="arrow">→</span><mark>Café</mark></div>
-          <p>Case and diacritics are ignored.</p>
+          <p data-i18n="ex1_d">Case and diacritics are ignored.</p>
         </div>
         <div class="example">
-          <div class="q">Cyrillic</div>
+          <div class="q" data-i18n="ex2_q">Cyrillic</div>
           <div class="row"><code>елка</code><span class="arrow">→</span><mark>ёлка</mark></div>
-          <p>ё and е match; й stays a letter of its own.</p>
+          <p data-i18n="ex2_d">ё and е match; й stays a letter of its own.</p>
         </div>
         <div class="example">
-          <div class="q">Line breaks</div>
+          <div class="q" data-i18n="ex3_q">Line breaks</div>
           <div class="row"><code>information</code><span class="arrow">→</span><mark>infor-
 mation</mark></div>
-          <p>Words split by a hyphen at the end of a line are found.</p>
+          <p data-i18n="ex3_d">Words split by a hyphen at the end of a line are found.</p>
         </div>
       </div>
     </div>
@@ -309,23 +375,24 @@ mation</mark></div>
   <section id="download">
     <div class="wrap download">
       <div>
-        <h2>Get QuickPDF</h2>
-        <p class="section-lead">QuickPDF is distributed as an APK on GitHub.</p>
+        <h2 data-i18n="get_title">Get QuickPDF</h2>
+        <p class="section-lead" data-i18n="get_lead">QuickPDF is distributed as an APK on GitHub. Once installed, it keeps itself up to date.</p>
         <ol class="steps">
-          <li><strong>Download the APK</strong><span>Get <code>QuickPDF-&lt;version&gt;.apk</code> from the <a href="https://github.com/RGB-Outl4w/quickpdf-android/releases/latest">latest release</a>.</span></li>
-          <li><strong>Open it on your phone or tablet</strong><span>Allow installation from your browser or file manager when Android asks.</span></li>
-          <li><strong>Open a PDF</strong><span>From the app, or with <em>Open with</em> and <em>Share</em> from any other app.</span></li>
+          <li><strong data-i18n="s1_t">Download the APK</strong><span data-i18n-html="s1_d">Get <code>QuickPDF-&lt;version&gt;.apk</code> from the <a href="https://github.com/RGB-Outl4w/quickpdf-android/releases/latest">latest release</a>.</span></li>
+          <li><strong data-i18n="s2_t">Open it on your phone or tablet</strong><span data-i18n="s2_d">Allow installation from your browser or file manager when Android asks.</span></li>
+          <li><strong data-i18n="s3_t">Open a PDF</strong><span data-i18n-html="s3_d">From the app, or with <em>Open with</em> and <em>Share</em> from any other app.</span></li>
         </ol>
         <div class="cta" style="margin-top:12px">
-          <a class="btn btn-primary" href="https://github.com/RGB-Outl4w/quickpdf-android/releases/latest">Download latest release</a>
+          <a class="btn btn-primary" href="https://github.com/RGB-Outl4w/quickpdf-android/releases/latest" data-i18n="download_latest">Download latest release</a>
         </div>
       </div>
       <dl class="specs">
-        <div><dt>Requires</dt><dd>Android 8.0 or newer, ARM device</dd></div>
-        <div><dt>Size</dt><dd>About 22 MB; Russian OCR models (7.6 MB) download on first use</dd></div>
-        <div><dt>Permissions</dt><dd>Internet, only for the OCR model download</dd></div>
-        <div><dt>License</dt><dd><a href="https://github.com/RGB-Outl4w/quickpdf-android/blob/HEAD/LICENSE">Apache 2.0</a></dd></div>
-        <div><dt>Signing certificate</dt><dd class="fp">SHA-256 4F:FD:E9:15:9D:AA:CC:0B:A2:18:11:D5:91:6E:61:0D:E4:35:57:EA:F7:84:D7:D4:ED:7D:21:9C:F0:60:45:3E</dd></div>
+        <div><dt data-i18n="spec_req">Requires</dt><dd data-i18n="spec_req_v">Android 8.0 or newer, ARM device</dd></div>
+        <div><dt data-i18n="spec_size">Size</dt><dd data-i18n="spec_size_v">About 22 MB; Russian OCR models (7.6 MB) download on first use</dd></div>
+        <div><dt data-i18n="spec_lang">Languages</dt><dd data-i18n="spec_lang_v">English, Russian</dd></div>
+        <div><dt data-i18n="spec_perm">Permissions</dt><dd data-i18n="spec_perm_v">Internet, for the OCR models and the daily update check (can be turned off); installing apps, for in-app updates you confirm</dd></div>
+        <div><dt data-i18n="spec_license">License</dt><dd><a href="https://github.com/RGB-Outl4w/quickpdf-android/blob/HEAD/LICENSE">Apache 2.0</a></dd></div>
+        <div><dt data-i18n="spec_cert">Signing certificate</dt><dd class="fp">SHA-256 4F:FD:E9:15:9D:AA:CC:0B:A2:18:11:D5:91:6E:61:0D:E4:35:57:EA:F7:84:D7:D4:ED:7D:21:9C:F0:60:45:3E</dd></div>
       </dl>
     </div>
   </section>
@@ -335,12 +402,127 @@ mation</mark></div>
   <div class="wrap">
     <span>QuickPDF · Apache License 2.0</span>
     <nav aria-label="Footer">
-      <a href="https://github.com/RGB-Outl4w/quickpdf-android">Source</a>
-      <a href="https://github.com/RGB-Outl4w/quickpdf-android/releases">Releases</a>
-      <a href="https://github.com/RGB-Outl4w/quickpdf-android/issues">Report an issue</a>
+      <a href="https://github.com/RGB-Outl4w/quickpdf-android" data-i18n="ft_source">Source</a>
+      <a href="https://github.com/RGB-Outl4w/quickpdf-android/releases" data-i18n="ft_releases">Releases</a>
+      <a href="https://github.com/RGB-Outl4w/quickpdf-android/issues" data-i18n="ft_issue">Report an issue</a>
     </nav>
   </div>
 </footer>
 
+<script>
+(function () {
+  var ru = {
+    nav_features: "Возможности",
+    nav_download: "Скачать",
+    hero_title: "Найдите что угодно в своих PDF за секунды.",
+    hero_lead: "QuickPDF — небольшая быстрая читалка PDF для Android, созданная для учёбы. Откройте учебник, отсканированную книгу или свои конспекты, мгновенно ищите по всему тексту и выделяйте главное.",
+    download_apk: "Скачать APK",
+    source: "Исходный код на GitHub",
+    meta: "Бесплатно и с открытым кодом · Android 8.0+ · русский и английский · Без рекламы и слежки",
+    features_title: "Создана для длинных документов",
+    features_lead: "В учебниках сотни страниц. QuickPDF быстро приводит к нужной и не мешает читать.",
+    f1_t: "Мгновенный полнотекстовый поиск",
+    f1_d: "Все страницы индексируются в фоне и кэшируются. Совпадения подсвечиваются на странице, есть список результатов и переход к предыдущему и следующему.",
+    f2_t: "Поиск по всей библиотеке",
+    f2_d: "Найдите термин сразу во всех недавних документах и перейдите прямо на нужную страницу.",
+    f3_t: "Выделения и заметки",
+    f3_d: "Нажмите и удерживайте текст, чтобы выделить его: скопируйте, выделите одним из четырёх цветов или добавьте заметку. Закладками и заметками можно поделиться текстом.",
+    f4_t: "Поиск в отсканированных книгах",
+    f4_d: "Текст на страницах без текстового слоя распознаётся прямо на устройстве: ML Kit для языков на латинице, Tesseract для русского.",
+    f5_t: "Прокрутка или листание",
+    f5_d: "Непрерывная прокрутка по ширине или страницей целиком, либо постраничный режим с двумя страницами рядом на планшете.",
+    f6_t: "Бережно к глазам",
+    f6_d: "Сепия, ночной режим и ночная сепия, масштаб щипком и двойным касанием, полноэкранный режим без отвлечений и экран, который не гаснет при чтении.",
+    f7_t: "Быстрая навигация",
+    f7_d: "Пролистывайте сотни страниц ползунком у края экрана или переходите по содержанию, закладкам, заметкам, номеру страницы и миниатюрам.",
+    f8_t: "PDF с паролем",
+    f8_d: "Защищённые документы открываются после ввода пароля. Их текст никогда не сохраняется в память устройства.",
+    f9_t: "Приватно и всегда актуально",
+    f9_d: "Без аккаунтов, аналитики и рекламы, документы не покидают устройство. Приложение сообщит о новой версии и само её установит.",
+    forgive_title: "Поиск, который прощает",
+    forgive_lead: "Реальные документы неидеальны. QuickPDF находит то, что вы имели в виду, а не только то, что набрали.",
+    ex1_q: "Диакритика",
+    ex1_d: "Регистр и диакритические знаки не учитываются.",
+    ex2_q: "Кириллица",
+    ex2_d: "ё и е совпадают; й остаётся отдельной буквой.",
+    ex3_q: "Переносы",
+    ex3_d: "Находятся слова, разделённые переносом в конце строки.",
+    get_title: "Установите QuickPDF",
+    get_lead: "QuickPDF распространяется как APK на GitHub. После установки приложение обновляется само.",
+    s1_t: "Скачайте APK",
+    s1_d: "Скачайте <code>QuickPDF-&lt;версия&gt;.apk</code> из <a href=\"https://github.com/RGB-Outl4w/quickpdf-android/releases/latest\">последнего релиза</a>.",
+    s2_t: "Откройте его на телефоне или планшете",
+    s2_d: "Разрешите установку из браузера или файлового менеджера, когда Android спросит.",
+    s3_t: "Откройте PDF",
+    s3_d: "Из приложения или через <em>Открыть с помощью</em> и <em>Поделиться</em> в любом другом приложении.",
+    download_latest: "Скачать последний релиз",
+    spec_req: "Требования",
+    spec_req_v: "Android 8.0 или новее, устройство на ARM",
+    spec_size: "Размер",
+    spec_size_v: "Около 22 МБ; модели для русского OCR (7,6 МБ) загружаются при первом использовании",
+    spec_lang: "Языки",
+    spec_lang_v: "Русский, английский",
+    spec_perm: "Разрешения",
+    spec_perm_v: "Интернет — для моделей OCR и ежедневной проверки обновлений (её можно отключить); установка приложений — для обновлений, которые вы подтверждаете",
+    spec_license: "Лицензия",
+    spec_cert: "Сертификат подписи",
+    ft_source: "Исходный код",
+    ft_releases: "Релизы",
+    ft_issue: "Сообщить о проблеме"
+  };
+  var meta = {
+    en: { title: "QuickPDF – Fast PDF reader for Android", phone: "QuickPDF searching a document: 3 of 41 matches across 12 pages, highlighted on the page" },
+    ru: { title: "QuickPDF — быстрая читалка PDF для Android", phone: "QuickPDF ищет по документу: совпадение 3 из 41 на 12 страницах, подсвечено на странице" }
+  };
+  var root = document.documentElement;
+  var nodes = document.querySelectorAll("[data-i18n], [data-i18n-html]");
+  var english = [];
+  nodes.forEach(function (n) { english.push(n.innerHTML); });
+
+  function setLang(lang) {
+    nodes.forEach(function (n, i) {
+      var key = n.getAttribute("data-i18n") || n.getAttribute("data-i18n-html");
+      if (lang === "ru" && ru[key] !== undefined) {
+        if (n.hasAttribute("data-i18n-html")) n.innerHTML = ru[key]; else n.textContent = ru[key];
+      } else {
+        n.innerHTML = english[i];
+      }
+    });
+    root.lang = lang;
+    document.title = meta[lang].title;
+    document.querySelector(".phone").setAttribute("aria-label", meta[lang].phone);
+    var btn = document.getElementById("lang");
+    btn.textContent = lang === "ru" ? "EN" : "RU";
+    btn.setAttribute("aria-label", lang === "ru" ? "English" : "Русский");
+  }
+
+  function isDark() {
+    var t = root.dataset.theme;
+    return t ? t === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  function updateThemeLabel() {
+    var ruLang = root.lang === "ru";
+    var label = isDark() ? (ruLang ? "Светлая тема" : "Switch to light theme") : (ruLang ? "Тёмная тема" : "Switch to dark theme");
+    document.getElementById("theme").setAttribute("aria-label", label);
+  }
+
+  setLang(root.lang === "ru" ? "ru" : "en");
+  updateThemeLabel();
+
+  document.getElementById("lang").addEventListener("click", function () {
+    var next = root.lang === "ru" ? "en" : "ru";
+    setLang(next);
+    updateThemeLabel();
+    try { localStorage.setItem("lang", next); } catch (e) {}
+  });
+  document.getElementById("theme").addEventListener("click", function () {
+    var next = isDark() ? "light" : "dark";
+    root.dataset.theme = next;
+    updateThemeLabel();
+    try { localStorage.setItem("theme", next); } catch (e) {}
+  });
+})();
+</script>
 </body>
 </html>

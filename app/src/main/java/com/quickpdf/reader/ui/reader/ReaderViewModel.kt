@@ -10,7 +10,11 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.quickpdf.reader.QuickPdfApp
+import com.quickpdf.reader.R
+import com.quickpdf.reader.data.Annotation
+import com.quickpdf.reader.data.AnnotationStore
 import com.quickpdf.reader.data.Library
+import com.quickpdf.reader.data.Settings
 import com.quickpdf.reader.pdf.IndexCache
 import com.quickpdf.reader.pdf.MlKitOcr
 import com.quickpdf.reader.pdf.Ocr
@@ -22,6 +26,8 @@ import com.quickpdf.reader.pdf.Search
 import com.quickpdf.reader.pdf.SearchHit
 import com.quickpdf.reader.pdf.TessData
 import com.quickpdf.reader.pdf.TesseractOcr
+import com.quickpdf.reader.pdf.cleanSelection
+import com.quickpdf.reader.ui.UiText
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
@@ -67,16 +73,19 @@ data class SearchState(
 }
 
 /** Pages recognized, or kilobytes downloaded while [downloadingModels]. */
+/** Selected text on one page, [start, end) in that page's indexed text. */
+data class TextSelection(val page: Int, val start: Int, val end: Int)
+
 data class OcrProgress(val done: Int, val total: Int, val downloadingModels: Boolean = false)
 
 sealed interface DocState {
     data object Loading : DocState
-    data class Error(val message: String) : DocState
+    class Error(val message: UiText) : DocState
     data class NeedsPassword(val wrong: Boolean) : DocState
     class Ready(val name: String, val renderer: PdfPageRenderer, val initialPage: Int) : DocState
 }
 
-class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
+class ReaderViewModel(app: Application, val uri: Uri, private val startPage: Int?) : AndroidViewModel(app) {
     private val library = (app as QuickPdfApp).library
 
     private val _doc = MutableStateFlow<DocState>(DocState.Loading)
@@ -95,14 +104,21 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
     private val _ocr = MutableStateFlow<OcrProgress?>(null)
     val ocr: StateFlow<OcrProgress?> = _ocr.asStateFlow()
 
-    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
-    val messages: SharedFlow<String> = _messages
+    private val _messages = MutableSharedFlow<UiText>(extraBufferCapacity = 4)
+    val messages: SharedFlow<UiText> = _messages
+
+    private val annotationStore = AnnotationStore(app.filesDir, uri.toString())
+    private val _annotations = MutableStateFlow<List<Annotation>>(emptyList())
+    val annotations: StateFlow<List<Annotation>> = _annotations.asStateFlow()
+
+    private val _selection = MutableStateFlow<TextSelection?>(null)
+    val selection: StateFlow<TextSelection?> = _selection.asStateFlow()
 
     val bookmarks: StateFlow<Set<Int>> = library.recents
         .map { list -> list.firstOrNull { it.uri == uri.toString() }?.bookmarks ?: emptySet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
-    val nightPages: StateFlow<Boolean> = library.nightPages
+    val settings: StateFlow<Settings> = library.settings
 
     private var renderer: PdfPageRenderer? = null
     private var textSource: PdfTextSource? = null
@@ -118,6 +134,7 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
     init {
         viewModelScope.launch { open() }
         viewModelScope.launch { runSearches() }
+        viewModelScope.launch { _annotations.value = withContext(Dispatchers.IO) { annotationStore.load() } }
     }
 
     // ---- Opening & indexing -------------------------------------------------------------------
@@ -138,8 +155,8 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
                 }
             }
             renderer = r
-            val recent = library.touch(uri, info.name, r.pageCount)
-            currentPage = recent.lastPage.coerceIn(0, (r.pageCount - 1).coerceAtLeast(0))
+            val recent = library.touch(uri, info.name, r.pageCount, info.size)
+            currentPage = (startPage ?: recent.lastPage).coerceIn(0, (r.pageCount - 1).coerceAtLeast(0))
             _doc.value = DocState.Ready(info.name, r, currentPage)
             // Don't keep the text of password-protected documents on disk.
             cache = if (password == null) IndexCache(ctx.filesDir, uri.toString(), info.size) else null
@@ -152,11 +169,11 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
             _doc.value = DocState.NeedsPassword(wrong = password != null)
         } catch (e: SecurityException) {
             _doc.value = DocState.Error(
-                if (e.message?.contains("password", ignoreCase = true) == true) "This PDF is password-protected."
-                else "No permission to open this file. Please open it again from your files."
+                if (e.message?.contains("password", ignoreCase = true) == true) UiText.Res(R.string.error_password_protected)
+                else UiText.Res(R.string.error_no_permission)
             )
         } catch (e: Exception) {
-            _doc.value = DocState.Error("Couldn't open this PDF.\n${e.message ?: e.javaClass.simpleName}")
+            _doc.value = DocState.Error(UiText.Res(R.string.error_open_failed, e.message ?: e.javaClass.simpleName))
         }
     }
 
@@ -316,7 +333,7 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
         val r = renderer ?: return
         val targets = pages.indices.filter { val p = pages[it]; p == null || (p.source != PageText.SOURCE_OCR && !p.hasText) }
         if (targets.isEmpty()) {
-            _messages.tryEmit("All pages already have searchable text")
+            _messages.tryEmit(UiText.Res(R.string.ocr_nothing_to_do))
             return
         }
         ocrJob = viewModelScope.launch {
@@ -353,16 +370,16 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
                     }
                     if (k % 20 == 19) saveIndex()
                 }
-                _messages.tryEmit("Text recognized on $recognized of ${targets.size} pages")
+                _messages.tryEmit(UiText.Plural(R.plurals.ocr_done, targets.size, recognized, targets.size))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val reason = e.message ?: e.javaClass.simpleName
                 _messages.tryEmit(
                     when {
-                        !cyrillic -> "Text recognition failed (needs Google Play services): $reason"
-                        e is IOException -> "Couldn't download the Russian text models: $reason"
-                        else -> "Text recognition failed: $reason"
+                        !cyrillic -> UiText.Res(R.string.ocr_failed_mlkit, reason)
+                        e is IOException -> UiText.Res(R.string.ocr_download_failed, reason)
+                        else -> UiText.Res(R.string.ocr_failed, reason)
                     }
                 )
             } finally {
@@ -387,9 +404,40 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
 
     fun toggleBookmark(page: Int) = library.toggleBookmark(uri, page)
 
-    fun setNightPages(enabled: Boolean) = library.setNightPages(enabled)
+    fun updateSettings(change: (Settings) -> Settings) = library.updateSettings(change)
 
     fun pageText(page: Int): PageText? = pages.getOrNull(page)
+
+    // ---- Selection, highlights and notes ------------------------------------------------------
+
+    fun select(selection: TextSelection?) {
+        _selection.value = selection
+    }
+
+    /** The selected text, ready to copy or share. */
+    fun selectedText(): String = _selection.value?.let { selectedText(it) }.orEmpty()
+
+    fun selectedText(sel: TextSelection): String {
+        val text = pages.getOrNull(sel.page)?.text ?: return ""
+        return cleanSelection(text.substring(sel.start.coerceIn(0, text.length), sel.end.coerceIn(0, text.length)))
+    }
+
+    fun addAnnotation(sel: TextSelection, color: Int, note: String = ""): Annotation {
+        val now = System.currentTimeMillis()
+        val a = Annotation(now, sel.page, sel.start, sel.end, color, note.trim(), selectedText(sel), now)
+        saveAnnotations((_annotations.value + a).sortedWith(compareBy({ it.page }, { it.start })))
+        _selection.value = null
+        return a
+    }
+
+    fun updateAnnotation(a: Annotation) = saveAnnotations(_annotations.value.map { if (it.id == a.id) a.copy(note = a.note.trim()) else it })
+
+    fun deleteAnnotation(id: Long) = saveAnnotations(_annotations.value.filterNot { it.id == id })
+
+    private fun saveAnnotations(list: List<Annotation>) {
+        _annotations.value = list
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) { annotationStore.save(list) }
+    }
 
     override fun onCleared() {
         renderer?.close()
@@ -401,8 +449,8 @@ class ReaderViewModel(app: Application, val uri: Uri) : AndroidViewModel(app) {
     companion object {
         private const val OCR_WIDTH = 1700
 
-        fun factory(app: Application, uri: Uri) = viewModelFactory {
-            initializer { ReaderViewModel(app, uri) }
+        fun factory(app: Application, uri: Uri, startPage: Int?) = viewModelFactory {
+            initializer { ReaderViewModel(app, uri, startPage) }
         }
     }
 }

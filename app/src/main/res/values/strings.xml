@@ -1,3 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">QuickPDF</string>
+    <string name="app_name" translatable="false">QuickPDF</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
+    <string name="clear">Clear</string>
+    <string name="more">More options</string>
+    <string name="open">Open</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="start">Start</string>
+    <string name="go">Go</string>
+    <string name="later">Later</string>
+    <string name="search">Search</string>
+    <string name="share">Share</string>
+    <string name="copy">Copy</string>
+    <string name="copied">Copied</string>
+    <string name="today">Today</string>
+    <string name="yesterday">Yesterday</string>
+    <string name="page_n">Page %d</string>
+    <string name="page_short">p. %d</string>
+    <string name="page_of">Page %1$d of %2$d</string>
+    <string name="page_of_percent">Page %1$d of %2$d · %3$d%%</string>
+
+    <!-- Home -->
+    <string name="open_pdf">Open PDF</string>
+    <string name="search_all">Search all documents</string>
+    <string name="settings">Settings</string>
+    <string name="filter_recent">Filter recent files</string>
+    <string name="recent">Recent</string>
+    <string name="continue_reading">Continue reading</string>
+    <string name="continue_button">Continue</string>
+    <string name="remove_from_recent">Remove from recent</string>
+    <string name="empty_title">Open a PDF to start reading</string>
+    <string name="tip_search">Search the whole document instantly and jump between matches</string>
+    <string name="tip_ocr">Scanned book? Recognize its text on-device to make it searchable</string>
+    <string name="tip_navigation">Bookmarks, highlights, notes and page thumbnails for fast navigation</string>
+    <plurals name="bookmarks">
+        <item quantity="one">%d bookmark</item>
+        <item quantity="other">%d bookmarks</item>
+    </plurals>
+
+    <!-- Library search -->
+    <string name="search_all_hint">Search all recent documents</string>
+    <string name="searching_docs">Searching documents: %1$d of %2$d…</string>
+    <string name="open_all_matches">Open document at the first match</string>
+    <plurals name="matches_in_docs">
+        <item quantity="one">%2$d document · matches: %1$d</item>
+        <item quantity="other">%2$d documents · matches: %1$d</item>
+    </plurals>
+    <plurals name="not_indexed">
+        <item quantity="one">%d document hasn’t been indexed yet. Open it once to include it in search.</item>
+        <item quantity="other">%d documents haven’t been indexed yet. Open them once to include them in search.</item>
+    </plurals>
+
+    <!-- Reader -->
+    <string name="navigate">Contents, bookmarks, notes and pages</string>
+    <string name="add_bookmark">Bookmark this page</string>
+    <string name="remove_bookmark">Remove bookmark</string>
+    <string name="go_to_page">Go to page</string>
+    <string name="page_range">Page (1–%d)</string>
+    <string name="reading_settings">Reading settings</string>
+    <string name="recognize_text_menu">Recognize text (OCR)</string>
+    <string name="share_notes">Share bookmarks and notes</string>
+    <string name="error_password_protected">This PDF is password-protected.</string>
+    <string name="error_no_permission">No permission to open this file. Please open it again from your files.</string>
+    <string name="error_open_failed">Couldn’t open this PDF.\n%s</string>
+    <string name="password_title">This PDF is password-protected</string>
+    <string name="password">Password</string>
+    <string name="wrong_password">Wrong password</string>
+
+    <!-- Search in document -->
+    <string name="close_search">Close search</string>
+    <string name="search_in_document">Search in document</string>
+    <string name="show_all_results">Show all results</string>
+    <string name="previous">Previous match</string>
+    <string name="next">Next match</string>
+    <string name="searching">Searching…</string>
+    <string name="no_matches">No matches</string>
+    <string name="match_position">%1$d of %2$s · %3$s</string>
+    <string name="status_indexing">%1$s  (indexing %2$d/%3$d)</string>
+    <plurals name="pages">
+        <item quantity="one">%d page</item>
+        <item quantity="other">%d pages</item>
+    </plurals>
+
+    <!-- Selection, highlights, notes -->
+    <string name="clear_selection">Clear selection</string>
+    <string name="highlight">Highlight</string>
+    <string name="add_note">Add note</string>
+    <string name="highlight_title">Highlight · page %d</string>
+    <string name="note">Note</string>
+    <string name="export_highlights">Highlights and notes</string>
+    <string name="export_note">Note: %s</string>
+
+    <!-- Navigate sheet -->
+    <string name="tab_contents">Contents</string>
+    <string name="tab_bookmarks">Bookmarks</string>
+    <string name="tab_notes">Notes</string>
+    <string name="tab_pages">Pages</string>
+    <string name="no_contents">This PDF has no table of contents.\nUse Pages or search to navigate.</string>
+    <string name="no_bookmarks">No bookmarks yet.\nTap the bookmark icon in the top bar to save a page.</string>
+    <string name="no_notes">No highlights yet.\nLong-press text on a page to select it, then highlight it or add a note.</string>
+
+    <!-- OCR -->
+    <string name="recognize">Recognize</string>
+    <string name="recognize_text">Recognize text</string>
+    <string name="not_now">Not now</string>
+    <string name="no_text_yet">No searchable text yet</string>
+    <string name="scanned_hint">This looks like a scanned document. Recognize its text on your device to search it.</string>
+    <string name="ocr_language_prompt">Language of the scanned pages:</string>
+    <string name="ocr_latin">English and other Latin-script languages</string>
+    <string name="ocr_latin_hint">Fast</string>
+    <string name="ocr_russian">Russian (with English)</string>
+    <string name="ocr_russian_hint">Slower; downloads 7.6 MB of models the first time</string>
+    <string name="ocr_downloading">Downloading text models… %1$.1f / %2$.1f MB</string>
+    <string name="ocr_progress">Recognizing text… %1$d / %2$d</string>
+    <string name="ocr_nothing_to_do">All pages already have searchable text</string>
+    <string name="ocr_failed_mlkit">Text recognition failed (needs Google Play services): %s</string>
+    <string name="ocr_download_failed">Couldn’t download the Russian text models: %s</string>
+    <string name="ocr_failed">Text recognition failed: %s</string>
+    <plurals name="scanned_pages">
+        <item quantity="one">%d scanned page without text. Recognize text on-device to make it searchable.</item>
+        <item quantity="other">%d scanned pages without text. Recognize text on-device to make them searchable.</item>
+    </plurals>
+    <plurals name="ocr_done">
+        <item quantity="one">Text recognized on %1$d of %2$d page</item>
+        <item quantity="other">Text recognized on %1$d of %2$d pages</item>
+    </plurals>
+
+    <!-- Settings -->
+    <string name="settings_layout">Layout</string>
+    <string name="layout_continuous">Continuous scroll</string>
+    <string name="layout_paged">Page by page</string>
+    <string name="two_pages">Two pages side by side</string>
+    <string name="two_pages_hint">On wide screens, such as a tablet in landscape</string>
+    <string name="settings_fit">Page size</string>
+    <string name="fit_width">Fit width</string>
+    <string name="fit_page">Fit whole page</string>
+    <string name="settings_page_color">Page color</string>
+    <string name="tint_original">Original</string>
+    <string name="tint_sepia">Sepia</string>
+    <string name="tint_night">Night</string>
+    <string name="tint_night_sepia">Night sepia</string>
+    <string name="keep_screen_on">Keep screen on while reading</string>
+    <string name="settings_language">Language</string>
+    <string name="language_system">System default</string>
+    <string name="settings_updates">Updates</string>
+    <string name="check_updates">Check for updates automatically</string>
+    <string name="check_updates_hint">Once a day, from the GitHub releases page</string>
+    <string name="check_now">Check now</string>
+    <string name="settings_about">About</string>
+    <string name="version">Version</string>
+    <string name="source_code">Source code</string>
+    <string name="license">License</string>
+
+    <!-- Updates -->
+    <string name="update_available">QuickPDF %s is available</string>
+    <string name="update_available_short">Version %s is available</string>
+    <string name="update_up_to_date">You have the latest version</string>
+    <string name="update_check_failed">Couldn’t check for updates. Check your connection.</string>
+    <string name="update">Update</string>
+    <string name="update_title">Update to %s</string>
+    <string name="whats_new">What’s new</string>
+    <string name="update_keeps_data">The update installs over the current version. Your recent files, bookmarks, highlights and notes are kept.</string>
+    <string name="download_and_install">Download and install</string>
+    <string name="update_downloading">Downloading… %1$.1f / %2$.1f MB</string>
+    <string name="update_permission">To install updates, allow QuickPDF to install apps: tap Open settings, turn on “Allow from this source”, then come back here.</string>
+    <string name="open_settings">Open settings</string>
+    <string name="update_installing">Follow the installer to finish the update. If nothing happened, install it from the release page instead.</string>
+    <string name="update_failed">The update couldn’t be installed automatically: %s</string>
+    <string name="update_manual">To update by hand: open the release page, download the .apk file under Assets, open it and tap Update. Your documents and notes are kept.</string>
+    <string name="open_release_page">Release page</string>
 </resources>

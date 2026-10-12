@@ -39,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
@@ -54,6 +55,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -78,6 +80,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -86,9 +91,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.quickpdf.reader.R
+import com.quickpdf.reader.data.Annotation
 import com.quickpdf.reader.pdf.OutlineItem
 import com.quickpdf.reader.pdf.PdfPageRenderer
 import com.quickpdf.reader.pdf.Search
+import com.quickpdf.reader.pdf.SearchHit
+import com.quickpdf.reader.ui.theme.AnnotationColors
 import kotlin.math.roundToInt
 
 // ---- Fast scroller --------------------------------------------------------------------------------
@@ -190,11 +199,11 @@ fun SearchBarPanel(
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shadowElevation = 3.dp) {
             Column(Modifier.statusBarsPadding()) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
-                    IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close search") }
+                    IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.close_search)) }
                     TextField(
                         value = query,
                         onValueChange = { onQuery(it); onShowResults(true) },
-                        placeholder = { Text("Search in document") },
+                        placeholder = { Text(stringResource(R.string.search_in_document)) },
                         singleLine = true,
                         modifier = Modifier.weight(1f).focusRequester(focus),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -207,7 +216,7 @@ fun SearchBarPanel(
                         ),
                     )
                     if (query.isNotEmpty()) {
-                        IconButton(onClick = { onQuery(""); focus.requestFocus() }) { Icon(Icons.Outlined.Close, "Clear") }
+                        IconButton(onClick = { onQuery(""); focus.requestFocus() }) { Icon(Icons.Outlined.Close, stringResource(R.string.clear)) }
                     }
                 }
                 if (query.isNotBlank()) {
@@ -222,10 +231,10 @@ fun SearchBarPanel(
                             modifier = Modifier.weight(1f),
                         )
                         IconButton(onClick = { onShowResults(!showResults) }, enabled = search.hits.isNotEmpty()) {
-                            Icon(Icons.AutoMirrored.Outlined.List, "Show all results")
+                            Icon(Icons.AutoMirrored.Outlined.List, stringResource(R.string.show_all_results))
                         }
-                        IconButton(onClick = onPrev, enabled = search.hits.isNotEmpty()) { Icon(Icons.Outlined.KeyboardArrowUp, "Previous") }
-                        IconButton(onClick = onNext, enabled = search.hits.isNotEmpty()) { Icon(Icons.Outlined.KeyboardArrowDown, "Next") }
+                        IconButton(onClick = onPrev, enabled = search.hits.isNotEmpty()) { Icon(Icons.Outlined.KeyboardArrowUp, stringResource(R.string.previous)) }
+                        IconButton(onClick = onNext, enabled = search.hits.isNotEmpty()) { Icon(Icons.Outlined.KeyboardArrowDown, stringResource(R.string.next)) }
                     }
                 }
                 if (!index.done && index.total > 0) {
@@ -255,17 +264,29 @@ fun SearchBarPanel(
     }
 }
 
+@Composable
 private fun statusText(search: SearchState, index: IndexState): String {
     val base = when {
-        search.searching && search.hits.isEmpty() -> "Searching…"
-        search.hits.isEmpty() -> "No matches"
+        search.searching && search.hits.isEmpty() -> stringResource(R.string.searching)
+        search.hits.isEmpty() -> stringResource(R.string.no_matches)
         else -> {
             val total = if (search.hits.size >= Search.MAX_HITS) "${Search.MAX_HITS}+" else "${search.hits.size}"
             val pages = search.byPage.size
-            "${search.current + 1} of $total · $pages page${if (pages == 1) "" else "s"}"
+            stringResource(R.string.match_position, search.current + 1, total, pluralStringResource(R.plurals.pages, pages, pages))
         }
     }
-    return if (!index.done && index.total > 0) "$base  (indexing ${index.indexed}/${index.total})" else base
+    return if (!index.done && index.total > 0) stringResource(R.string.status_indexing, base, index.indexed, index.total) else base
+}
+
+/** A hit's snippet with the match emphasized. */
+@Composable
+fun highlightedSnippet(hit: SearchHit): AnnotatedString {
+    val highlight = SpanStyle(fontWeight = FontWeight.Bold, background = MaterialTheme.colorScheme.tertiaryContainer)
+    return buildAnnotatedString {
+        append(hit.snippet.substring(0, hit.snippetMatchStart))
+        withStyle(highlight) { append(hit.snippet.substring(hit.snippetMatchStart, hit.snippetMatchEnd)) }
+        append(hit.snippet.substring(hit.snippetMatchEnd))
+    }
 }
 
 @Composable
@@ -273,7 +294,6 @@ private fun ResultsList(search: SearchState, onSelect: (Int) -> Unit) {
     val state = rememberLazyListState(
         initialFirstVisibleItemIndex = (search.current - 1).coerceAtLeast(0)
     )
-    val highlight = SpanStyle(fontWeight = FontWeight.Bold, background = MaterialTheme.colorScheme.tertiaryContainer)
     LazyColumn(state = state, modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
         items(search.hits.size) { i ->
             val hit = search.hits[i]
@@ -287,17 +307,13 @@ private fun ResultsList(search: SearchState, onSelect: (Int) -> Unit) {
                 verticalAlignment = Alignment.Top,
             ) {
                 Text(
-                    "p. ${hit.page + 1}",
+                    stringResource(R.string.page_short, hit.page + 1),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.width(56.dp).padding(top = 2.dp),
                 )
                 Text(
-                    buildAnnotatedString {
-                        append(hit.snippet.substring(0, hit.snippetMatchStart))
-                        withStyle(highlight) { append(hit.snippet.substring(hit.snippetMatchStart, hit.snippetMatchEnd)) }
-                        append(hit.snippet.substring(hit.snippetMatchEnd))
-                    },
+                    highlightedSnippet(hit),
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
@@ -310,10 +326,10 @@ private fun ResultsList(search: SearchState, onSelect: (Int) -> Unit) {
 @Composable
 private fun ScannedHint(onRecognize: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(20.dp)) {
-        Text("No searchable text yet", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.no_text_yet), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
         Text(
-            "This looks like a scanned document. Recognize its text on your device to search it.",
+            stringResource(R.string.scanned_hint),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -321,7 +337,7 @@ private fun ScannedHint(onRecognize: () -> Unit) {
         Button(onClick = onRecognize) {
             Icon(Icons.Outlined.DocumentScanner, null)
             Spacer(Modifier.width(8.dp))
-            Text("Recognize text")
+            Text(stringResource(R.string.recognize_text))
         }
     }
 }
@@ -333,22 +349,26 @@ private fun ScannedHint(onRecognize: () -> Unit) {
 fun NavigateSheet(
     outline: List<OutlineItem>,
     bookmarks: Set<Int>,
+    annotations: List<Annotation>,
     renderer: PdfPageRenderer,
     currentPage: Int,
     pageLabel: (Int) -> String,
     onJump: (Int) -> Unit,
+    onOpenAnnotation: (Annotation) -> Unit,
+    onShare: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var tab by rememberSaveable { mutableStateOf(if (outline.isEmpty()) 2 else 0) }
+    var tab by rememberSaveable { mutableStateOf(if (outline.isEmpty()) 3 else 0) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
         PrimaryTabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Contents") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Bookmarks") })
-            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Pages") })
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.tab_contents)) })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.tab_bookmarks)) })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text(stringResource(R.string.tab_notes)) })
+            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text(stringResource(R.string.tab_pages)) })
         }
         Box(Modifier.fillMaxWidth().fillMaxHeight(0.8f)) {
             when (tab) {
-                0 -> if (outline.isEmpty()) EmptyHint("This PDF has no table of contents.\nUse Pages or search to navigate.") else
+                0 -> if (outline.isEmpty()) EmptyHint(stringResource(R.string.no_contents)) else
                     LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
                         items(outline) { item ->
                             Row(
@@ -376,8 +396,9 @@ fun NavigateSheet(
                         }
                     }
 
-                1 -> if (bookmarks.isEmpty()) EmptyHint("No bookmarks yet.\nTap the bookmark icon in the top bar to save a page.") else
+                1 -> if (bookmarks.isEmpty()) EmptyHint(stringResource(R.string.no_bookmarks)) else
                     LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
+                        item { ShareRow(onShare) }
                         items(bookmarks.sorted()) { page ->
                             Column(
                                 Modifier
@@ -385,7 +406,7 @@ fun NavigateSheet(
                                     .clickable { onJump(page) }
                                     .padding(horizontal = 20.dp, vertical = 12.dp)
                             ) {
-                                Text("Page ${page + 1}", style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(R.string.page_n, page + 1), style = MaterialTheme.typography.titleSmall)
                                 val label = pageLabel(page)
                                 if (label.isNotBlank()) {
                                     Text(
@@ -399,10 +420,65 @@ fun NavigateSheet(
                         }
                     }
 
+                2 -> if (annotations.isEmpty()) EmptyHint(stringResource(R.string.no_notes)) else
+                    LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
+                        item { ShareRow(onShare) }
+                        items(annotations, key = { it.id }) { a -> AnnotationRow(a) { onOpenAnnotation(a) } }
+                    }
+
                 else -> ThumbnailGrid(renderer, currentPage, onJump)
             }
         }
     }
+}
+
+@Composable
+private fun ShareRow(onShare: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
+        TextButton(onClick = onShare) {
+            Icon(Icons.Outlined.Share, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.share_notes))
+        }
+    }
+}
+
+@Composable
+private fun AnnotationRow(a: Annotation, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        Box(
+            Modifier
+                .padding(top = 3.dp)
+                .size(width = 4.dp, height = 40.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(AnnotationColors[a.color])
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.page_n, a.page + 1),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(a.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (a.note.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    a.note,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+    HorizontalDivider()
 }
 
 @Composable
