@@ -1,0 +1,18 @@
+QuickPDF
+Copyright 2026 RGB-Outl4w
+
+This product includes software developed by third parties:
+
+- PdfBox-Android (https://github.com/TomRoush/PdfBox-Android)
+  Apache License 2.0. Based on Apache PDFBox, developed at
+  The Apache Software Foundation (https://www.apache.org/).
+
+- Tesseract4Android (https://github.com/adaptech-cz/Tesseract4Android)
+  Apache License 2.0. Bundles Tesseract (Apache License 2.0), Leptonica
+  (BSD 2-Clause), libjpeg (IJG License) and libpng (libpng License).
+
+- Tesseract trained data, downloaded at runtime
+  (https://github.com/tesseract-ocr/tessdata_fast), Apache License 2.0.
+
+- ML Kit Text Recognition via Google Play services, subject to the
+  ML Kit Terms of Service (https://developers.google.com/ml-kit/terms).

@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +63,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
 import com.quickpdf.reader.data.Library
 import com.quickpdf.reader.data.RecentDoc
 
@@ -96,51 +99,57 @@ fun HomeScreen(library: Library, onOpen: (Uri) -> Unit) {
             val shown = remember(recents, filter) {
                 if (filter.isBlank()) recents else recents.filter { it.name.contains(filter.trim(), ignoreCase = true) }
             }
-            LazyColumn(
-                contentPadding = PaddingValues(
-                    start = 16.dp, end = 16.dp,
-                    top = padding.calculateTopPadding(),
-                    bottom = padding.calculateBottomPadding() + 96.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                if (recents.size > 4) {
+            BoxWithConstraints {
+                // Keep cards at a readable width on tablets; the list itself still scrolls edge to edge.
+                val side = max(16.dp, (maxWidth - MAX_CONTENT_WIDTH) / 2)
+                LazyColumn(
+                    contentPadding = PaddingValues(
+                        start = side, end = side,
+                        top = padding.calculateTopPadding(),
+                        bottom = padding.calculateBottomPadding() + 96.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (recents.size > 4) {
+                        item {
+                            OutlinedTextField(
+                                value = filter,
+                                onValueChange = { filter = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("Filter recent files") },
+                                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                                trailingIcon = {
+                                    if (filter.isNotEmpty()) IconButton(onClick = { filter = "" }) { Icon(Icons.Outlined.Close, "Clear") }
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(28.dp),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            )
+                        }
+                    }
                     item {
-                        OutlinedTextField(
-                            value = filter,
-                            onValueChange = { filter = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Filter recent files") },
-                            leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                            trailingIcon = {
-                                if (filter.isNotEmpty()) IconButton(onClick = { filter = "" }) { Icon(Icons.Outlined.Close, "Clear") }
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(28.dp),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        Text(
+                            "Recent",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 4.dp, start = 4.dp),
                         )
                     }
-                }
-                item {
-                    Text(
-                        "Recent",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 4.dp, start = 4.dp),
-                    )
-                }
-                items(shown, key = { it.uri }) { doc ->
-                    RecentCard(
-                        doc = doc,
-                        onClick = { onOpen(Uri.parse(doc.uri)) },
-                        onRemove = { library.remove(doc.uri) },
-                        modifier = Modifier.animateItem(),
-                    )
+                    items(shown, key = { it.uri }) { doc ->
+                        RecentCard(
+                            doc = doc,
+                            onClick = { onOpen(Uri.parse(doc.uri)) },
+                            onRemove = { library.remove(doc.uri) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+private val MAX_CONTENT_WIDTH = 720.dp
 
 @Composable
 private fun RecentCard(doc: RecentDoc, onClick: () -> Unit, onRemove: () -> Unit, modifier: Modifier = Modifier) {
@@ -213,7 +222,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 
 @Composable
 private fun Tip(icon: ImageVector, text: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.widthIn(max = 480.dp).fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.width(14.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
