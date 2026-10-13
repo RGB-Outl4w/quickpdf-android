@@ -7,9 +7,16 @@ import java.io.DataOutputStream
 import java.io.File
 import java.security.MessageDigest
 
-/** Persists extracted / recognized text so a document is only indexed once. */
-class IndexCache(dir: File, uri: String, size: Long) {
-    private val file: File = File(dir, "index").apply { mkdirs() }.resolve(sha1Hex("$uri|$size") + ".bin")
+/**
+ * Persists extracted / recognized text so a document is only indexed once. Keyed by the document's
+ * [com.quickpdf.reader.data.docKey]; before 1.2 by URI and size, so an index under one of [legacyUris] is adopted.
+ */
+class IndexCache(dir: File, key: String, size: Long, legacyUris: Collection<String> = emptyList()) {
+    private val file: File = File(dir, "index").apply { mkdirs() }.let { folder ->
+        folder.resolve(sha1Hex("doc|$key") + ".bin").also { f ->
+            if (!f.exists()) legacyUris.map { folder.resolve(sha1Hex("$it|$size") + ".bin") }.firstOrNull { it.exists() }?.renameTo(f)
+        }
+    }
 
     fun load(pageCount: Int): Array<PageText?>? = runCatching {
         if (!file.exists()) return null

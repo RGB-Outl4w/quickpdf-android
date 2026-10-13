@@ -36,8 +36,7 @@ private val Dark = darkColorScheme(
 )
 
 @Composable
-fun QuickPdfTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun QuickPdfTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val scheme = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val ctx = LocalContext.current

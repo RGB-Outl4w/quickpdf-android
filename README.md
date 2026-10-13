@@ -23,6 +23,8 @@ A small, fast PDF reader for Android, built for studying. Open a textbook, a sca
 - Long-press text to select a word, drag to extend the selection, and adjust it with the handles.
 - Copy, share or search the selection, highlight it in one of four colors, or attach a note.
 - Notes are listed per document, and bookmarks, highlights and notes can be shared as plain text.
+- Bookmarks, highlights and notes stay with the file, even when it's opened again from another app.
+- Back up recent documents, bookmarks, highlights and notes to a file, and restore them, for example on a new phone.
 
 **Scanned books**
 
@@ -35,11 +37,14 @@ A small, fast PDF reader for Android, built for studying. Open a textbook, a sca
 - Pinch and double-tap zoom, a distraction-free full screen, and an option to keep the screen on.
 - Page colors: original, sepia, night and night sepia.
 - Edge scroller, go to page, table of contents, bookmarks and a page-thumbnail grid.
-- A *Continue reading* card and reading progress for every recent document.
+- Links in the PDF work: tap one to go to another page, or to open a web address after confirming it.
+- After a jump (contents, a link, search, go to page) a button takes you back to where you were.
+- A *Continue reading* card and reading progress for every recent document; pin documents to keep them at the top, in the order you drag them into. Removing a document from the list can be undone.
 - Opens PDFs from the file picker or from other apps via *Open with* and *Share*, including password-protected files.
 
 **App**
 
+- Light, dark or system theme.
 - English and Russian interface, switchable in the app's settings or, on Android 13 and later, in the system's per-app language settings.
 - Checks GitHub for a new version once a day and offers to download and install it; can be turned off.
 

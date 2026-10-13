@@ -23,6 +23,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,16 @@ import kotlin.math.roundToInt
 /** Content slot for one page: page index, bitmap width to render at, and the modifier that sizes it. */
 typealias PageContent = @Composable (page: Int, renderWidth: Int, modifier: Modifier) -> Unit
 
+/** An exact place to come back to: the [page] shown, and the list item and scroll offset in continuous mode. */
+data class ReadingSpot(val page: Int, val item: Int, val offset: Int) {
+    companion object {
+        val Saver = listSaver<ReadingSpot?, Int>(
+            save = { if (it == null) emptyList() else listOf(it.page, it.item, it.offset) },
+            restore = { if (it.size == 3) ReadingSpot(it[0], it[1], it[2]) else null },
+        )
+    }
+}
+
 /** Where the reader is and how to move it, independent of the page layout. */
 @Stable
 interface PageNavigator {
@@ -52,6 +63,10 @@ interface PageNavigator {
 
     /** Shows [page]; with a page-relative point ([fx], [fy]), puts it about a third down the screen. */
     suspend fun goTo(page: Int, fx: Float? = null, fy: Float? = null)
+
+    fun spot(): ReadingSpot = ReadingSpot(currentPage, currentPage, 0)
+
+    suspend fun restore(spot: ReadingSpot) = goTo(spot.page)
 }
 
 /** Zoom/pan of the whole page column. Screen x = tx + scale * localX, screen y = scale * localY. */
@@ -123,6 +138,10 @@ class ListNavigator(
     }
 
     override val isMoving: Boolean get() = listState.isScrollInProgress
+
+    override fun spot() = ReadingSpot(currentPage, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+
+    override suspend fun restore(spot: ReadingSpot) = listState.scrollToItem(spot.item, spot.offset)
 
     override suspend fun goTo(page: Int, fx: Float?, fy: Float?) {
         val p = page.coerceIn(0, (renderer.pageCount - 1).coerceAtLeast(0))

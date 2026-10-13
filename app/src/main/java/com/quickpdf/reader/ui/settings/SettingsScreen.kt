@@ -3,6 +3,8 @@ package com.quickpdf.reader.ui.settings
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +28,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,12 +59,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.quickpdf.reader.R
 import com.quickpdf.reader.data.AppLanguage
+import com.quickpdf.reader.data.AppTheme
+import com.quickpdf.reader.data.Backup
 import com.quickpdf.reader.data.Library
 import com.quickpdf.reader.data.PageTint
 import com.quickpdf.reader.data.Settings
 import com.quickpdf.reader.data.Updates
 import com.quickpdf.reader.ui.reader.paper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 /** Reading options, shared by the settings screen and the reader's quick settings sheet. */
 @Composable
@@ -146,6 +157,31 @@ fun SettingsScreen(library: Library, updates: Updates, onBack: () -> Unit) {
     val upToDate = stringResource(R.string.update_up_to_date)
     val checkFailed = stringResource(R.string.update_check_failed)
     val availableFormat = stringResource(R.string.update_available_short)
+    var backupStatus by remember { mutableStateOf<String?>(null) }
+    var restoreStatus by remember { mutableStateOf<String?>(null) }
+    val backupSaved = stringResource(R.string.backup_saved)
+    val backupFailed = stringResource(R.string.backup_failed)
+    val restoreFailed = stringResource(R.string.restore_failed)
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            backupStatus = runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri, "wt")!!.use { Backup.write(context, library, it) }
+                }
+            }.fold({ backupSaved }, { backupFailed })
+        }
+    }
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            restoreStatus = runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)!!.use { Backup.read(context, library, it) }
+                }
+            }.fold({ n -> context.resources.getQuantityString(R.plurals.restore_done, n, n) }, { restoreFailed })
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -164,6 +200,19 @@ fun SettingsScreen(library: Library, updates: Updates, onBack: () -> Unit) {
                     .padding(bottom = 24.dp)
             ) {
                 ReadingSettings(settings, library::updateSettings)
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+                SectionTitle(stringResource(R.string.settings_theme))
+                for (theme in AppTheme.entries) {
+                    val label = stringResource(
+                        when (theme) {
+                            AppTheme.SYSTEM -> R.string.theme_system
+                            AppTheme.LIGHT -> R.string.theme_light
+                            AppTheme.DARK -> R.string.theme_dark
+                        }
+                    )
+                    RadioRow(label, settings.theme == theme) { library.updateSettings { it.copy(theme = theme) } }
+                }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
                 SectionTitle(stringResource(R.string.settings_language))
@@ -197,12 +246,47 @@ fun SettingsScreen(library: Library, updates: Updates, onBack: () -> Unit) {
                 }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
+                SectionTitle(stringResource(R.string.settings_backup))
+                ClickRow(stringResource(R.string.backup_create), backupStatus ?: stringResource(R.string.backup_create_hint)) {
+                    backupStatus = null
+                    backupLauncher.launch("QuickPDF-backup-${LocalDate.now()}.json")
+                }
+                ClickRow(stringResource(R.string.backup_restore), restoreStatus ?: stringResource(R.string.backup_restore_hint)) {
+                    restoreStatus = null
+                    restoreLauncher.launch(arrayOf("application/json", "application/octet-stream", "text/plain"))
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
                 SectionTitle(stringResource(R.string.settings_about))
                 InfoRow(stringResource(R.string.version), updates.currentVersion)
                 ClickRow(stringResource(R.string.source_code), "github.com/RGB-Outl4w/quickpdf-android") {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/RGB-Outl4w/quickpdf-android")))
                 }
                 InfoRow(stringResource(R.string.license), "Apache License 2.0")
+
+                ElevatedCard(
+                    onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://boosty.to/rgboutlaw"))) } },
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.FavoriteBorder, null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.support_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            )
+                            Text(
+                                stringResource(R.string.support_subtitle),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            )
+                        }
+                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                }
             }
         }
     }

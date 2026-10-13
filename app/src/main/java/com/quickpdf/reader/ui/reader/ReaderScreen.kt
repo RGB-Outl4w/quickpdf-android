@@ -48,6 +48,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Toc
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.BorderColor
@@ -115,6 +116,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quickpdf.reader.R
 import com.quickpdf.reader.data.Annotation
+import com.quickpdf.reader.pdf.PageLink
 import com.quickpdf.reader.pdf.SearchHit
 import com.quickpdf.reader.pdf.highlightRects
 import com.quickpdf.reader.ui.settings.ReadingSettings
@@ -134,10 +136,15 @@ fun ReaderScreen(uri: Uri, startPage: Int?, initialQuery: String?, onBack: () ->
 
     BackHandler(onBack = onBack)
     when (val d = doc) {
-        DocState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        is DocState.Error -> ErrorView(d.message.resolve(LocalContext.current), onBack)
-        is DocState.NeedsPassword -> PasswordView(d.wrong, vm::submitPassword, onBack)
         is DocState.Ready -> Reader(vm, d, initialQuery, onBack)
+        // The surface gives text the theme's content color; without one it's black, unreadable in the dark theme.
+        else -> Surface(Modifier.fillMaxSize()) {
+            when (d) {
+                is DocState.Error -> ErrorView(d.message.resolve(LocalContext.current), onBack)
+                is DocState.NeedsPassword -> PasswordView(d.wrong, vm::submitPassword, onBack)
+                else -> Box(contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            }
+        }
     }
 }
 
@@ -174,6 +181,10 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, initialQuery: Strin
     var editing by remember { mutableStateOf<EditedAnnotation?>(null) }
     var scrubbing by remember { mutableStateOf(false) }
     var lastPage by rememberSaveable { mutableIntStateOf(doc.initialPage) }
+    // Where to go back to after a jump (contents, a link, search, …), and where the current search started.
+    var returnSpot by rememberSaveable(stateSaver = ReadingSpot.Saver) { mutableStateOf<ReadingSpot?>(null) }
+    var searchOrigin by rememberSaveable(stateSaver = ReadingSpot.Saver) { mutableStateOf<ReadingSpot?>(null) }
+    var openLink by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         if (initialQuery != null && !initialQueryApplied) {
@@ -240,11 +251,17 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, initialQuery: Strin
     ImmersiveMode(visible = barsVisible || searching || selection != null)
     KeepScreenOn(settings.keepScreenOn)
 
-    fun jumpToPage(page: Int) {
+    fun markReturn() {
+        returnSpot = nav.spot()
+    }
+
+    fun jumpToPage(page: Int, mark: Boolean = true) {
+        if (mark && page != currentPage) markReturn()
         scope.launch { nav.goTo(page) }
     }
 
-    fun jumpTo(page: Int, start: Int, end: Int) {
+    fun jumpTo(page: Int, start: Int, end: Int, mark: Boolean = true) {
+        if (mark) markReturn()
         scope.launch {
             val rect = vm.charBoxes(page)?.let { highlightRects(it, start, end).firstOrNull() }
             nav.goTo(page, rect?.centerX(), rect?.top)
@@ -252,7 +269,22 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, initialQuery: Strin
     }
 
     fun jumpToHit(hit: SearchHit?) {
-        hit?.let { jumpTo(it.page, it.start, it.end) }
+        hit ?: return
+        // Stepping through matches keeps one way back: to where the search started.
+        val origin = searchOrigin ?: nav.spot().also { searchOrigin = it }
+        returnSpot = origin
+        jumpTo(hit.page, hit.start, hit.end, mark = false)
+    }
+
+    fun closeSearch() {
+        searching = false
+        query = ""
+        searchOrigin = null
+        vm.setQuery("")
+    }
+
+    fun followLink(link: PageLink) {
+        if (link.url != null) openLink = link.url else jumpToPage(link.page)
     }
 
     fun copy(text: String) {
@@ -284,8 +316,10 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, initialQuery: Strin
             selection = selection?.takeIf { it.page == page },
             pageText = { vm.pageText(it)?.text },
             charBoxes = vm::charBoxes,
+            links = vm::links,
             onSelect = vm::select,
             onAnnotationTap = { editing = EditedAnnotation(it, isNew = false) },
+            onLinkTap = ::followLink,
             modifier = modifier,
         )
     }
@@ -325,7 +359,7 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, initialQuery: Strin
                     index = index,
                     showResults = showResults,
                     onShowResults = { showResults = it },
-                    onClose = { searching = false; query = ""; vm.setQuery("") },
+                    onClose = ::closeSearch,
                     onPrev = { jumpToHit(vm.prevHit()) },
                     onNext = { jumpToHit(vm.nextHit()) },
                     onSelect = { i -> showResults = false; jumpToHit(vm.selectHit(i)) },
@@ -386,8 +420,9 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, initialQuery: Strin
             FastScroller(
                 pageCount = renderer.pageCount,
                 currentPage = currentPage,
-                onDragState = { scrubbing = it },
-                onScrollTo = { page -> jumpToPage(page) },
+                onDragState = { dragging -> if (dragging) markReturn(); scrubbing = dragging },
+                // A drag marked where it started; a tap on the track is a single jump.
+                onScrollTo = { page -> jumpToPage(page, mark = !scrubbing) },
             )
         }
 
@@ -412,10 +447,36 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, initialQuery: Strin
             }
         }
 
+        // Back to where the last jump started; tapping it again returns to the jump's target.
+        val back = returnSpot
+        AnimatedVisibility(
+            visible = back != null && back.page != currentPage && (barsVisible || nav.isMoving),
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 16.dp, bottom = 16.dp),
+        ) {
+            val spot = back ?: return@AnimatedVisibility
+            Surface(
+                onClick = {
+                    returnSpot = nav.spot()
+                    scope.launch { nav.restore(spot) }
+                },
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shadowElevation = 3.dp,
+            ) {
+                Row(Modifier.padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.back_to_page, spot.page + 1), Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.page_short, spot.page + 1), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 56.dp))
     }
 
-    if (searching && selection == null) BackHandler { searching = false; query = ""; vm.setQuery("") }
+    if (searching && selection == null) BackHandler(onBack = ::closeSearch)
     if (selection != null) BackHandler { vm.select(null) }
 
     if (showNavigate) {
@@ -461,6 +522,21 @@ private fun Reader(vm: ReaderViewModel, doc: DocState.Ready, initialQuery: Strin
         OcrLanguageDialog(
             onStart = { cyrillic -> showOcrLanguage = false; vm.startOcr(cyrillic) },
             onDismiss = { showOcrLanguage = false },
+        )
+    }
+
+    openLink?.let { url ->
+        AlertDialog(
+            onDismissRequest = { openLink = null },
+            title = { Text(stringResource(R.string.open_link)) },
+            text = { Text(url, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = TextOverflow.Ellipsis) },
+            confirmButton = {
+                TextButton(onClick = {
+                    openLink = null
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                }) { Text(stringResource(R.string.open)) }
+            },
+            dismissButton = { TextButton(onClick = { openLink = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 

@@ -55,6 +55,7 @@ import com.quickpdf.reader.QuickPdfApp
 import com.quickpdf.reader.R
 import com.quickpdf.reader.data.Library
 import com.quickpdf.reader.data.RecentDoc
+import com.quickpdf.reader.data.docKey
 import com.quickpdf.reader.pdf.IndexCache
 import com.quickpdf.reader.pdf.PageText
 import com.quickpdf.reader.pdf.Search
@@ -121,7 +122,7 @@ class LibrarySearchViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadIndex(doc: RecentDoc): Array<PageText?>? {
         val app = getApplication<Application>()
         val size = if (doc.size >= 0) doc.size else Library.queryFileInfo(app, Uri.parse(doc.uri)).size
-        return IndexCache(app.filesDir, doc.uri, size).load(doc.pageCount)
+        return IndexCache(app.filesDir, docKey(doc.uri, doc.name, size), size, listOf(doc.uri)).load(doc.pageCount)
     }
 
     companion object {

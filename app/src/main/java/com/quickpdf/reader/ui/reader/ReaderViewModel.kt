@@ -19,6 +19,7 @@ import com.quickpdf.reader.pdf.IndexCache
 import com.quickpdf.reader.pdf.MlKitOcr
 import com.quickpdf.reader.pdf.Ocr
 import com.quickpdf.reader.pdf.OutlineItem
+import com.quickpdf.reader.pdf.PageLink
 import com.quickpdf.reader.pdf.PageText
 import com.quickpdf.reader.pdf.PdfPageRenderer
 import com.quickpdf.reader.pdf.PdfTextSource
@@ -45,7 +46,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -107,15 +107,17 @@ class ReaderViewModel(app: Application, val uri: Uri, private val startPage: Int
     private val _messages = MutableSharedFlow<UiText>(extraBufferCapacity = 4)
     val messages: SharedFlow<UiText> = _messages
 
-    private val annotationStore = AnnotationStore(app.filesDir, uri.toString())
+    private var annotationStore: AnnotationStore? = null
     private val _annotations = MutableStateFlow<List<Annotation>>(emptyList())
     val annotations: StateFlow<List<Annotation>> = _annotations.asStateFlow()
 
     private val _selection = MutableStateFlow<TextSelection?>(null)
     val selection: StateFlow<TextSelection?> = _selection.asStateFlow()
 
-    val bookmarks: StateFlow<Set<Int>> = library.recents
-        .map { list -> list.firstOrNull { it.uri == uri.toString() }?.bookmarks ?: emptySet() }
+    /** The document's URI in the library; another one than [uri] if it was first opened through another app. */
+    private val libraryUri = MutableStateFlow(uri.toString())
+
+    val bookmarks: StateFlow<Set<Int>> = combine(library.recents, libraryUri) { list, u -> list.firstOrNull { it.uri == u }?.bookmarks ?: emptySet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     val settings: StateFlow<Settings> = library.settings
@@ -127,6 +129,7 @@ class ReaderViewModel(app: Application, val uri: Uri, private val startPage: Int
     private var ocrJob: Job? = null
     private var password: String? = null
     private val boxCache = LruCache<Int, FloatArray>(32)
+    private val linkCache = LruCache<Int, List<PageLink>>(64)
 
     var currentPage = 0
         private set
@@ -134,7 +137,6 @@ class ReaderViewModel(app: Application, val uri: Uri, private val startPage: Int
     init {
         viewModelScope.launch { open() }
         viewModelScope.launch { runSearches() }
-        viewModelScope.launch { _annotations.value = withContext(Dispatchers.IO) { annotationStore.load() } }
     }
 
     // ---- Opening & indexing -------------------------------------------------------------------
@@ -155,11 +157,17 @@ class ReaderViewModel(app: Application, val uri: Uri, private val startPage: Int
                 }
             }
             renderer = r
+            // Notes and the index used to be stored per URI; pick up those of every URI this file was opened under.
+            val legacyUris = library.sameDocument(uri, info.name, info.size).map { it.uri } + uri.toString()
             val recent = library.touch(uri, info.name, r.pageCount, info.size)
+            libraryUri.value = recent.uri
+            val store = AnnotationStore(ctx.filesDir, recent.key, legacyUris)
+            _annotations.value = withContext(Dispatchers.IO) { store.load() }
+            annotationStore = store
             currentPage = (startPage ?: recent.lastPage).coerceIn(0, (r.pageCount - 1).coerceAtLeast(0))
             _doc.value = DocState.Ready(info.name, r, currentPage)
             // Don't keep the text of password-protected documents on disk.
-            cache = if (password == null) IndexCache(ctx.filesDir, uri.toString(), info.size) else null
+            cache = if (password == null) IndexCache(ctx.filesDir, recent.key, info.size, legacyUris) else null
             viewModelScope.launch { r.measurePages(fromPage = currentPage) }
             viewModelScope.launch { _outline.value = runCatching { textSource?.outline() }.getOrNull().orEmpty() }
             buildIndex(r.pageCount)
@@ -325,6 +333,15 @@ class ReaderViewModel(app: Application, val uri: Uri, private val startPage: Int
         return boxes
     }
 
+    /** Links on [page], empty if there are none or PdfBox can't read the file. */
+    suspend fun links(page: Int): List<PageLink> {
+        linkCache.get(page)?.let { return it }
+        val ts = textSource ?: return emptyList()
+        val links = withContext(Dispatchers.IO) { runCatching { ts.links(page) }.getOrDefault(emptyList()) }
+        linkCache.put(page, links)
+        return links
+    }
+
     // ---- OCR ----------------------------------------------------------------------------------
 
     /** [cyrillic] uses Tesseract (models downloaded on first use) instead of ML Kit's Latin recognizer. */
@@ -399,10 +416,10 @@ class ReaderViewModel(app: Application, val uri: Uri, private val startPage: Int
 
     fun onPageChanged(page: Int) {
         currentPage = page
-        library.setLastPage(uri, page)
+        library.setLastPage(libraryUri.value, page)
     }
 
-    fun toggleBookmark(page: Int) = library.toggleBookmark(uri, page)
+    fun toggleBookmark(page: Int) = library.toggleBookmark(libraryUri.value, page)
 
     fun updateSettings(change: (Settings) -> Settings) = library.updateSettings(change)
 
@@ -436,7 +453,8 @@ class ReaderViewModel(app: Application, val uri: Uri, private val startPage: Int
 
     private fun saveAnnotations(list: List<Annotation>) {
         _annotations.value = list
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) { annotationStore.save(list) }
+        val store = annotationStore ?: return
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) { store.save(list) }
     }
 
     override fun onCleared() {

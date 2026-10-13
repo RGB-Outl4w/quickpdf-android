@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.quickpdf.reader.R
 import com.quickpdf.reader.data.Annotation
 import com.quickpdf.reader.data.PageTint
+import com.quickpdf.reader.pdf.PageLink
 import com.quickpdf.reader.pdf.PdfPageRenderer
 import com.quickpdf.reader.pdf.SearchHit
 import com.quickpdf.reader.pdf.charIndexAt
@@ -114,7 +115,7 @@ fun PageTint.canvas(): Color = when (this) {
 /**
  * One rendered page with search matches, highlights and text selection. Long-press selects a word, dragging
  * extends it word by word, and the handles adjust it afterwards. A tap on a highlight opens it; a tap while
- * text is selected clears the selection. Other taps are left to the reader (bars, zoom).
+ * text is selected clears the selection; a tap on a link follows it. Other taps are left to the reader (bars, zoom).
  */
 @Composable
 fun PageView(
@@ -128,8 +129,10 @@ fun PageView(
     selection: TextSelection?,
     pageText: (Int) -> String?,
     charBoxes: suspend (Int) -> FloatArray?,
+    links: suspend (Int) -> List<PageLink>,
     onSelect: (TextSelection?) -> Unit,
     onAnnotationTap: (Annotation) -> Unit,
+    onLinkTap: (PageLink) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -147,6 +150,9 @@ fun PageView(
         if (needBoxes && boxes == null) boxes = charBoxes(page)
     }
 
+    var pageLinks by remember(page) { mutableStateOf<List<PageLink>>(emptyList()) }
+    LaunchedEffect(page) { pageLinks = links(page) }
+
     val hitRects = remember(boxes, hits) { rectsFor(boxes, hits.orEmpty()) { it.start to it.end } }
     val noteRects = remember(boxes, annotations) { rectsFor(boxes, annotations) { it.start to it.end } }
     val selectionRects = remember(boxes, selection) { rectsFor(boxes, listOfNotNull(selection)) { it.start to it.end } }
@@ -157,6 +163,8 @@ fun PageView(
     val latestSelection by rememberUpdatedState(selection)
     val latestOnSelect by rememberUpdatedState(onSelect)
     val latestOnAnnotationTap by rememberUpdatedState(onAnnotationTap)
+    val latestLinks by rememberUpdatedState(pageLinks)
+    val latestOnLinkTap by rememberUpdatedState(onLinkTap)
 
     Box(
         modifier
@@ -216,6 +224,11 @@ fun PageView(
                         } else if (latestSelection != null) {
                             up.consume()
                             latestOnSelect(null)
+                        } else {
+                            latestLinks.firstOrNull { it.contains(x, y) }?.let {
+                                up.consume()
+                                latestOnLinkTap(it)
+                            }
                         }
                     }
                 }
