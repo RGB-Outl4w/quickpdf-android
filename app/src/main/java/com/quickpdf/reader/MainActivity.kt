@@ -2,17 +2,21 @@ package com.quickpdf.reader
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -23,6 +27,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.quickpdf.reader.data.AppLanguage
+import com.quickpdf.reader.data.AppTheme
 import com.quickpdf.reader.ui.home.HomeScreen
 import com.quickpdf.reader.ui.reader.ReaderScreen
 import com.quickpdf.reader.ui.search.LibrarySearchScreen
@@ -50,7 +55,18 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch { app.updates.check(force = false) }
         }
         setContent {
-            QuickPdfTheme {
+            val settings by library.settings.collectAsState()
+            val dark = when (settings.theme) {
+                AppTheme.LIGHT -> false
+                AppTheme.DARK -> true
+                AppTheme.SYSTEM -> isSystemInDarkTheme()
+            }
+            // Status and navigation bar icons follow the app's theme rather than the system's.
+            LaunchedEffect(dark) {
+                val style = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark }
+                enableEdgeToEdge(style, style)
+            }
+            QuickPdfTheme(dark) {
                 var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
                 var openUri by rememberSaveable { mutableStateOf<Uri?>(null) }
                 // Set when a document is opened from library search.
